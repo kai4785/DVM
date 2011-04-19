@@ -1,0 +1,94 @@
+class ABC
+{
+    ABC() {}
+    public int num;
+    public int get_num()
+    {
+        return num;
+    }
+}
+class DEF
+{
+    public ABC abc;
+    DEF() 
+    {
+        abc = new ABC();
+    }
+    public ABC get_ABC()
+    {
+        return abc;
+    }
+}
+class GHI
+{
+    public DEF def;
+    GHI() 
+    {
+        def = new DEF();
+    }
+    public DEF get_DEF()
+    {
+        return def;
+    }
+}
+class JKL
+{
+    public GHI ghi;
+    JKL() 
+    {
+        ghi = new GHI();
+    }
+    public GHI get_GHI()
+    {
+        return ghi;
+    }
+}
+class Cat
+{
+    Cat(int r)
+    {
+        x = r;
+        y = r;
+        cout << r;
+    }
+    public int x;
+    public int y;
+    public int f()
+    {
+        int i = 5;
+        return i;
+    }
+}
+void main()
+{
+    int r = 1;
+    int y = 2;
+    int g = 3;
+    int k = 4;
+    int f = 5;
+    int c[] = new int[5];
+    ABC abc;
+    DEF def;
+    GHI ghi;
+    JKL jkl = new JKL();
+    Cat x = new Cat( r );
+    Cat m[] = new Cat[ r ];
+    Cat a = new Cat(r);
+    Cat b = new Cat(r);
+    r = y;
+    r = y * g + f / k;
+    a.x = b.y;
+    r = a.f(k, g) + g * r;
+    f( r * 3 , g < k);
+    cout << r;
+    c [ r + 3 ] = c [ r - 5 ];
+    r = jkl.get_GHI().get_DEF().get_ABC().get_num();
+    abc = jkl.get_GHI().get_DEF().get_ABC();
+    def = jkl.get_GHI().get_DEF();
+    ghi = jkl.get_GHI();
+    jkl.get_GHI().get_DEF().get_ABC().num = 5;
+    r = jkl.ghi.def.abc.num;
+    abc = jkl.ghi.def.abc;
+    def = jkl.ghi.def;
+    ghi = jkl.ghi;
+}

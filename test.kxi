@@ -1,0 +1,41 @@
+// Comment the start
+class Test
+{
+    Test(int ii, char cc)
+    {
+        i = ii;
+        c = cc;
+    }
+    private int i;
+    private char c;
+    public int output()
+    {
+        cout << i;
+        cout << 'n';
+        cout << c;
+        cout << 'n';
+    }
+}
+void main()
+{
+    int i = 1;
+    int x;
+    char c = 'c';
+    char b;
+    int y[];
+    Test t = new Test(i);
+    Test t = new Test(i, c);
+    i = t.output();
+    if(true)
+    {
+        i = 5;
+    }
+    while( i > 0 )
+    {
+        i = i - 1;
+    }
+    b = itoa(5);
+    x = atoi('a');
+    i = x * i;
+    i = x * 5;
+} 

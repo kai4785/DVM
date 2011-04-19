@@ -1,0 +1,15 @@
+class Cat 
+{
+    public int age;
+    private int weight;
+    public void run(int x, int y) {
+        int speed;
+    }
+}
+void main()
+{
+    int i;
+    bool b = true;
+    if(i == 5)
+        cout << i;
+}

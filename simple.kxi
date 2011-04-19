@@ -1,0 +1,19 @@
+//class Cat
+//{
+//    public bool tr()
+//    {
+//        bool retval = true;
+//        int i = 5 + 3;
+//        return retval;
+//    }
+//}
+void main()
+{
+    int i = 10;
+    while(i > 0)
+    {
+        cout << i;
+        cout << '\n';
+        i = i - 1;
+    }
+}

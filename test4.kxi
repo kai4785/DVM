@@ -1,0 +1,16 @@
+void main()
+{
+    int g;
+    int f;
+    int k;
+    int x;
+    int y;
+    int z;
+    //x + y;
+    //x + y * z;
+    //x < y;
+    //(x < y) && (z != 3);
+    x = y;
+    x = x + y;
+    x = y * g + f / k ;
+}

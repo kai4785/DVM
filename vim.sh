@@ -1,0 +1,5 @@
+alias vimall='vim -p cm.d Compiler.d as.d Assembler.d VirtualMachine.d os.d OperatingSystem.d Utilities.d Makefile run_test.sh'
+alias vimcm='vim -p cm.d Compiler.d Makefile'
+alias vimas='vim -p as.d Assembler.d Utilities.d Makefile'
+alias vimos='vim -p os.d OperatingSystem.d FileSystem.d VirtualMachine.d Utilities.d Makefile'
+alias vimfs='vim -p fs.d FileSystem.d Utilities.d Makefile'

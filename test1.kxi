@@ -1,0 +1,31 @@
+class Cat 
+{
+    Cat(int a, char w)
+    {
+        age = 5;
+        weight = 'c';
+        age = a;
+        weight = w;
+    }
+    public int age;
+    private char weight;
+    public int run(int x, int y) 
+    {
+        int speed = x;
+    }
+}
+void main()
+{
+    // Declare all variables before we use or assign to them.
+    int a;
+    char b = 'w';
+    int c[];
+    Cat cat = new Cat(0, 'x');
+
+    a = 5;
+    cat.run(5, 7);
+    cat.run(a, b);
+    cat.run(0, 'c');
+    c[4 + 5] = 5;
+    c = new int[5];
+}
