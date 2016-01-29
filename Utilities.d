@@ -183,7 +183,7 @@ public:
     {
         size_t last_set_bit()
         {
-            int i = _used - 1;
+            long i = _used - 1;
             while(i > 0 && !this[i])
             {
                 i--;

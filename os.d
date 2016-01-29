@@ -9,7 +9,7 @@ import OperatingSystem;
 
 void main(string args[]) {
     OperatingSystem os = new OperatingSystem();
-    if(args.length > 1 && exists(args[1]) && isfile(args[1]))
+    if(args.length > 1 && exists(args[1]) && isFile(args[1]))
     {
         File instream = File(args[1], "r");
         os.shell(instream, true);

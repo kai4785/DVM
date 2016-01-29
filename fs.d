@@ -49,7 +49,7 @@ void main(string[] args)
     {
         stdio.stderr.writef("Listing entries for %s\n", ll_path);
         KFS.DISK = stdio.File(disk, "r+b");
-        assert(KFS.isdir("/"));
+        assert(KFS.isDir("/"));
         KFS.chdir(ll_path);
         foreach(e; KFS.dirEntries())
         {
@@ -66,7 +66,7 @@ void main(string[] args)
         {
             KFS.chdir("/");
             KFS.mkdir(mkdir_path);
-            assert(KFS.isdir(mkdir_path));
+            assert(KFS.isDir(mkdir_path));
         }
         catch(Exception e)
         {
@@ -81,7 +81,7 @@ void main(string[] args)
         KFS.DISK = stdio.File(disk, "r+b");
         KFS.chdir("/");
         KFS.touch(touch_path);
-        assert(KFS.isfile(touch_path));
+        assert(KFS.isFile(touch_path));
 
         KFS.DISK.close();
     }

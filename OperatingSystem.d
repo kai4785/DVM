@@ -16,7 +16,7 @@ version(STDIO)
     private import std.process;
     void link(string source, string dest)
     {
-        std.process.system(format("ln %s %s", source, dest));
+        std.process.spawnShell(format("ln %s %s", source, dest));
     }
 }
 else version(KaiFS)
@@ -37,8 +37,8 @@ FileCompat stdout;
 FileCompat stderr;
 
 import std.string;
-alias std.string.split split; // disambiguate from std.regexp.split
-import std.regexp;
+alias std.string.split split; // disambiguate from std.regex.split
+import std.regex;
 import std.conv;
 import std.getopt;
 import std.algorithm;
@@ -225,10 +225,12 @@ public:
 
     void clear()
     {
-        running_queue.clear;
+        running_queue.length = 0;
     }
     
-    void next() {}
+    void next()
+    in {}
+    body {}
     
     @property Process current()
     {
@@ -500,30 +502,30 @@ private:
         FileCompat[] STDIO = [stdin, stdout, stderr];
 
         uint vm_threads = 1;
-        if(RegExp m = std.regexp.search(args, r"\s*--vm_threads\s+(\d+)\s+")) {
+        if(auto m = std.regex.matchFirst(args, r"\s*--vm_threads\s+(\d+)\s+")) {
+            vm_threads = to!(uint)(m[1]);
             args = m.pre ~ m.post;
-            vm_threads = to!(uint)(m.match(1));
         }
 
-        if(RegExp m = std.regexp.search(args, r"\s*<\s*(\S+)\s*$")) {
-            //stderr.writef("Redirecting STDIN to read from %s\n", m.match(1));
+        if(auto m = std.regex.matchFirst(args, r"\s*<\s*(\S+)\s*$")) {
+            //stderr.writef("Redirecting STDIN to read from %s\n", m[1]);
             args = m.pre ~ m.post;
-            STDIO[0] = new FileCompat(File(m.match(1), "r"));
+            STDIO[0] = new FileCompat(File(m[1], "r"));
         }
-        if(RegExp m = std.regexp.search(args, r"\s*>>\s*(\S+)\s*$")) {
-            //stderr.writef("Redirecting STDOUT to append to %s\n", m.match(1));
+        if(auto m = std.regex.matchFirst(args, r"\s*>>\s*(\S+)\s*$")) {
+            //stderr.writef("Redirecting STDOUT to append to %s\n", m[1]);
             args = m.pre ~ m.post;
-            STDIO[1] = new FileCompat(File(m.match(1), "a"));
+            STDIO[1] = new FileCompat(File(m[1], "a"));
         }
-        if(RegExp m = std.regexp.search(args, r"\s*>\s*(\S+)\s*$")) {
-            //stderr.writef("Redirecting STDOUT to write to %s\n", m.match(1));
+        if(auto m = std.regex.matchFirst(args, r"\s*>\s*(\S+)\s*$")) {
+            //stderr.writef("Redirecting STDOUT to write to %s\n", m[1]);
             args = m.pre ~ m.post;
-            STDIO[1] = new FileCompat(File(m.match(1), "w"));
+            STDIO[1] = new FileCompat(File(m[1], "w"));
         }
 
         if(exists(args)) 
         {
-            if(isfile(args)) 
+            if(isFile(args)) 
             {
                 // Extract header information for OS class
                 Process cur_proc = new Process(args, STDIO);
@@ -537,18 +539,18 @@ private:
                 cur_proc.R[PC] = header.data[2];
                 //stderr.writef("SB[%d] = cur_proc.size_in_memory[%d] - cur_proc.size[%d]\n", cur_proc.size_in_memory - cur_proc.size, cur_proc.size_in_memory, cur_proc.size);
                 enforce(cur_proc.size_in_memory > cur_proc.size, "Process doesn't fit inside the static size of memory (proc_size_in_memory)");
-                cur_proc.R[SB] = cur_proc.size_in_memory - cur_proc.size;
+                cur_proc.R[SB] = to!(int)(cur_proc.size_in_memory - cur_proc.size);
                 enforce(cur_proc.R[SB] > cur_proc.size, "Process plus stack does not fit inside the static size of memory (proc_size_in_memory)");
 
                 MemoryManagement!(ulong[32]) system_memory = read_memory!(MemoryManagement!(ulong[32]))();
-                cur_proc.R[OF] = system_memory.allocate(cur_proc.size_in_memory);
+                cur_proc.R[OF] = to!(int)(system_memory.allocate(cur_proc.size_in_memory));
 
                 MemoryManagement!(ulong[4]) proc_memory;
                 proc_memory.used = proc_memory.max_used;
                 proc_memory.block_size = (cur_proc.R[SB] - cur_proc.size) / proc_memory.max_used;
                 proc_memory.allocate(proc_memory.sizeof);
                 //stderr.writef("Setting block_size = %d, SL=%d + %d = %d\n", proc_memory.block_size, cur_proc.size, proc_memory.SL_pos, cur_proc.size + proc_memory.SL_pos);
-                cur_proc.R[SL] = cur_proc.size + proc_memory.SL_pos;
+                cur_proc.R[SL] = to!(int)(cur_proc.size + proc_memory.SL_pos);
 
                 //stderr.writef("do_load: writing program at position [%d - %d]\n", cur_proc.R[OF], cur_proc.R[OF] + cur_proc.R[SL] - 1);
                 vm.load(program, cur_proc.R[OF]);                         // Load the hex file into memory
@@ -562,7 +564,7 @@ private:
                 write_memory!(MemoryManagement!(ulong[4]))(proc_memory, cur_proc.R[OF] + cur_proc.size);
                 write_memory!(MemoryManagement!(ulong[32]))(system_memory);
             } 
-            else if(isdir(args)) 
+            else if(isDir(args)) 
             {
                 stderr.writef("Target is a directory: %s\n", args);
             } 
@@ -658,27 +660,27 @@ private:
             writef("%10.2fK, %s\n", cast(float)do_du_work(arg) / 1024, arg);
         }
         // foreach entry
-        //   if isfile
+        //   if isFile
         //     total += file.size
-        //   if isdir
+        //   if isDir
         //     recurse, or add to list of directories
     }
 
     size_t do_du_work(string arg)
     {
         size_t retval = 0;
-        if(isdir(arg)) 
+        if(isDir(arg)) 
         {
             DirIterator entries = dirEntries(arg, SpanMode.shallow);
             foreach (DirEntry e; entries) 
             {
-                if(e.isdir())
+                if(e.isDir())
                     retval += do_du_work(e.name);
                 else
                     retval += e.size;
             }
         } 
-        else if (isfile(arg)) 
+        else if (isFile(arg)) 
         {
             retval += getSize(arg);
         }
@@ -786,25 +788,25 @@ private:
         if(args.empty)
             args = ["."];
         foreach(arg; args) {
-            if(isdir(arg)) 
+            if(isDir(arg)) 
             {
                 DirIterator entries = dirEntries(arg, SpanMode.shallow);
                 writef("%-20s%20s %40s%40s\n", "Name", "Size", "CreateTime", "LastWriteTime");
                 foreach (DirEntry e; entries) 
                 {
-                    if(e.isdir())
+                    if(e.isDir())
                         version(STDIO)
-                            writef("%-20s%20.2fK%40d%40d\n", format("%s/",e.name), cast(float)e.size / 1024, e.lastWriteTime, e.lastWriteTime);
+                            writef("%-20s%20.2fK%40s%40s\n", format("%s/",e.name), cast(float)e.size / 1024, e.timeLastModified.toString(), e.timeLastModified.toString());
                         version(KFS)
-                            writef("%-20s%20.2fK%40s%40s\n", format("%s/", e.name), cast(float)e.size / 1024, e.createTime_str, e.lastWriteTime_str);
+                            writef("%-20s%20.2fK%40s%40s\n", format("%s/", e.name), cast(float)e.size / 1024, e.timeCreated.toString(), e.timeLastModified.toString());
                     else
                         version(STDIO)
-                            writef("%-20s%20.2fK%40d%40d\n", e.name, cast(float)e.size / 1024, e.lastWriteTime, e.lastWriteTime);
+                            writef("%-20s%20.2fK%40s%40s\n", e.name, cast(float)e.size / 1024, e.timeLastModified.toString(), e.timeLastModified.toString());
                         version(KFS)
-                            writef("%-20s%20.2fK%40s%40s\n", e.name, cast(float)e.size / 1024, e.createTime_str, e.lastWriteTime_str);
+                            writef("%-20s%20.2fK%40s%40s\n", e.name, cast(float)e.size / 1024, e.timeCreated.toString(), e.timeLastModified.toString());
                 }
             } 
-            else if (isfile(arg)) 
+            else if (isFile(arg)) 
             {
                 writef("%s\n", arg);
             }
@@ -830,9 +832,9 @@ private:
         }
         else
         {
-            if(RegExp m = std.regexp.search(args, r"^\s*(\d+)\s*$"))
+            if(auto m = std.regex.matchFirst(args, r"^\s*(\d+)\s*$"))
             {
-                uint pid = to!(uint)(m.match(0));
+                uint pid = to!(uint)(m.pre);
                 if((process_list[pid]) is null)
                 {
                     error = true;
@@ -991,13 +993,13 @@ private:
         cur_scheduler.current.state = 2;
         while(!cur_scheduler.current.buffer.length) {
           cur_scheduler.current.buffer = cur_scheduler.current.stdin.readln();
-          if(RegExp m = std.regexp.search(cur_scheduler.current.buffer, r"^\s*(\S.*)")) {
-            cur_scheduler.current.buffer = m.match(1);
+          if(auto m = std.regex.matchFirst(cur_scheduler.current.buffer, r"^\s*(\S.*)")) {
+            cur_scheduler.current.buffer = m[1];
           }
         }
         int i = 0;
-        if (RegExp m = std.regexp.search(cur_scheduler.current.buffer, r"^\s*([-+]?\d+)")) {
-          i = to!(int)(m.match(1));
+        if (auto m = std.regex.matchFirst(cur_scheduler.current.buffer, r"^\s*([-+]?\d+)")) {
+          i = to!(int)(m[1]);
           cur_scheduler.current.buffer = m.post;
         } else {
           throw(new Exception("Expected an integer from STDIN, got '" ~ cur_scheduler.current.buffer ~ "'."));
@@ -1064,7 +1066,7 @@ private:
         vm.fetch_vm_threads(cur_scheduler.current.active_threads, cur_scheduler.current.available_threads);
         int new_size = vm.fetch_register(I.op2);
         MemoryManagement!(ulong[4]) proc_mem = read_memory!(MemoryManagement!(ulong[4]))(cur_scheduler.current.R[OF] + cur_scheduler.current.size);
-        int address = cur_scheduler.current.size + proc_mem.allocate(new_size);
+        int address = to!(int)(cur_scheduler.current.size + proc_mem.allocate(new_size));
         // If allocate returned 0, we're out of memory
         if(address == cur_scheduler.current.size)
         {
@@ -1084,7 +1086,7 @@ private:
             write_memory!(int)(new_size, cur_scheduler.current.R[OF] + address);
             cur_scheduler.current.R[0] = address; // Set R0 to the address allocated
             // If end of new address is > SL need to move SL
-            cur_scheduler.current.R[SL] = cur_scheduler.current.size + proc_mem.SL_pos;
+            cur_scheduler.current.R[SL] = to!(int)(cur_scheduler.current.size + proc_mem.SL_pos);
         }
         write_memory!(MemoryManagement!(ulong[4]))(proc_mem, cur_scheduler.current.R[OF] + cur_scheduler.current.size);
         vm.set_registers(cur_scheduler.current.R);
@@ -1104,7 +1106,7 @@ private:
         proc_mem.free(size, address - cur_scheduler.current.size);
 
         //Set the SL again
-        cur_scheduler.current.R[SL] = cur_scheduler.current.size + proc_mem.SL_pos;
+        cur_scheduler.current.R[SL] = to!(int)(cur_scheduler.current.size + proc_mem.SL_pos);
 
         write_memory!(MemoryManagement!(ulong[4]))(proc_mem, cur_scheduler.current.R[OF] + cur_scheduler.current.size);
         vm.set_registers(cur_scheduler.current.R);
@@ -1291,7 +1293,7 @@ public:
         metrics = new PerfMetrics;
     }
 
-    void shell(std.stdio.File instream, bool e = false) {
+    void shell(std.stdio.File instream, bool _echo = false) {
         DISK = std.stdio.File("DISK", "r+b");
         try
         {
@@ -1302,7 +1304,7 @@ public:
             chdir("/");
             stderr.writef("Failed to chdir to host Environment \"PWD\" [%s]: %s\n", std.file.getcwd(), e.msg);
         }
-        echo = e;
+        echo = _echo;
         shell_proc = new Process("shell", [stdin, stdout, stderr]);
         shell_proc.state = 3;
         shell_proc.pid = max_procs;
@@ -1316,17 +1318,17 @@ public:
             }
             if(echo)
                 writef("%s\n", input);
-            if(RegExp m = std.regexp.search(input, r"\s*(\S+)\s*(.*)")) {
-                void delegate(string) cmd = commands.get(m.match(1), null);
+            if(auto m = std.regex.matchFirst(input, r"\s*(\S+)\s*(.*)")) {
+                void delegate(string) cmd = commands.get(m[1], null);
                 if(cmd !is null)
                 {
                     try
                     {
-                        cmd(m.match(2));
+                        cmd(m[2]);
                     }
                     catch(Exception e)
                     {
-                        stderr.writef("%s failed: %s\n", m.match(1), e.msg);
+                        stderr.writef("%s failed: %s\n", m[1], e.msg);
                     }
                 }
                 else

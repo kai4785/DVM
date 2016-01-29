@@ -5,7 +5,6 @@ module VirtualMachine;
 import std.stdio;    // For STDIN, STDOUT, STDERR
 import std.file;
 import std.conv;
-import std.regexp;
 import std.string;
 import std.exception;
 
@@ -64,7 +63,7 @@ struct VirtualMemory
             writef("Number of pages: [%d=%d*%d=%d]\n", new_length, new_length >> 9, PAGE_SIZE, (new_length >> 9) * PAGE_SIZE);
             foreach(num; 0.._virt_length>>9)
             {
-                pages[num] = num * PAGE_SIZE;
+                pages[num] = to!(int)(num * PAGE_SIZE);
                 page_used[num] = 0;
             }
         }
@@ -81,7 +80,7 @@ struct VirtualMemory
             stderr.writef("Starting at %d, going to %d\n", pages.length, nvl>>9);
             foreach(num; pages.length..nvl>>9)
             {
-                pages[num] = -1 - num;
+                pages[num] = to!(int)(int.max - num);
                 page_used[num] = 0;
             }
         }
@@ -187,7 +186,7 @@ struct VirtualMemory
                 }
                 pages[unused_swap] = pages[need];
             }
-            pages[need] = tmp2;
+            pages[need] = to!(int)(tmp2);
             debug(paging)
             {
                 stderr.writef("\n");
@@ -421,7 +420,7 @@ private:
                 stderr.writef("instruction: [%d] (%d) JMP %d:%s\n", active_threads[0].id, R[PC], I.op1, *symbol);
         }
         // Need to offset by the size of the instruction because the first thing we do after exection is increment PC
-        R[PC] = I.op1 - Instruction.sizeof; 
+        R[PC] = to!(int)(I.op1 - Instruction.sizeof);
     }
 
     void do_JMR(Instruction I) {
@@ -433,31 +432,31 @@ private:
                 stderr.writef("instruction: [%d] (%d) JMR %s(%d:%s)\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], *symbol);
         }
         // Need to offset by the size of the instruction because the first thing we do after exection is increment PC
-        R[PC] = R[I.op1] - Instruction.sizeof; 
+        R[PC] = to!(int)(R[I.op1] - Instruction.sizeof);
     }
     void do_BNZ(Instruction I) {
         debug(instruction) stderr.writef("instruction: [%d] (%d) BNZ %s(%d), %d\n", 
             active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], I.op2);
         if (R[I.op1]) {
-            R[PC] = I.op2 - Instruction.sizeof;
+            R[PC] = to!(int)(I.op2 - Instruction.sizeof);
         }
     }
     void do_BGT(Instruction I) {
         debug(instruction) stderr.writef("instruction: [%d] (%d) BGT %s(%d) > 0, %d\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], I.op2);
         if (R[I.op1] > 0) {
-            R[PC] = I.op2 - Instruction.sizeof;
+            R[PC] = to!(int)(I.op2 - Instruction.sizeof);
         }
     }
     void do_BLT(Instruction I) {
         debug(instruction) stderr.writef("instruction: [%d] (%d) BLT %s(%d) < 0, %d\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], I.op2);
         if (R[I.op1] < 0) {
-            R[PC] = I.op2 - Instruction.sizeof;
+            R[PC] = to!(int)(I.op2 - Instruction.sizeof);
         }
     }
     void do_BRZ(Instruction I) {
         debug(instruction) stderr.writef("instruction: [%d] (%d) BRZ %s(%d) == 0, %d\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], I.op2);
         if (!R[I.op1]) {
-            R[PC] = I.op2 - Instruction.sizeof;
+            R[PC] = to!(int)(I.op2 - Instruction.sizeof);
         }
     }
     void do_MOV(Instruction I) {
@@ -677,8 +676,8 @@ private:
         // id, SL, SB
         active_threads ~= new Thread(0, prog_end, prog_end + thread_stack_size);
         // Push the SB and SP back enough to keep a copy of all the Registers
-        R[SB] = active_threads[0].SB - (R[0].sizeof * R.length);
-        R[SP] = R[SB];
+        R[SB] = to!(int)(active_threads[0].SB - (R[0].sizeof * R.length));
+        R[SP] = to!(int)(R[SB]);
         store_registers(active_threads[0], R);
         // Create each available thread stack space, and store registers
         debug(threads) stderr.writef("threads: Creating %d available threads\n", R[TC]);
@@ -686,8 +685,8 @@ private:
             debug(threads)
                 stderr.writef("  thread: Setting thread %d %d %d\n", i, prog_end + i * thread_stack_size, prog_end + ((i + 1) * thread_stack_size - 1));
             available_threads ~= new Thread(i, prog_end + i * thread_stack_size, prog_end + ((i + 1) * thread_stack_size));
-            R[SB] = available_threads[$-1].SB - (R[0].sizeof * R.length);
-            R[SP] = R[SB];
+            R[SB] = to!(int)(available_threads[$-1].SB - (R[0].sizeof * R.length));
+            R[SP] = to!(int)(R[SB]);
             store_registers(available_threads[$-1], R);
         }
         debug(threads) stderr.writef("threads: There are %d available threads\n", R[TC]);
@@ -712,7 +711,7 @@ private:
     void read_registers(Thread thread) {
         debug(threads)
             stderr.writef("threads: pre read_registers: %s [%d]\n", R, R.length);
-        uint thread_SB = thread.SB - R.sizeof;
+        ulong thread_SB = thread.SB - R.sizeof;
         foreach(i; 0..R.length)
         {
             R[i] = read_int(thread_SB + i * R[0].sizeof);
@@ -725,7 +724,7 @@ private:
         debug(threads)
             stderr.writef("threads: pre store_registers: %s [%d]\n", R_copy, R_copy.length);
         // Store bytes into the vm memory
-        uint thread_SB = thread.SB - R_copy.sizeof;
+        ulong thread_SB = thread.SB - R_copy.sizeof;
         foreach(i; 0..R_copy.length)
         {
             write_int(thread_SB + i * R_copy[0].sizeof, R_copy[i]);
@@ -878,10 +877,10 @@ public:
 
     @property
     {
-        uint size() { return memory.length; }
-        void size(uint l) { memory.length = l; }
+        size_t size() { return memory.length; }
+        void size(size_t l) { memory.length = l; }
         version(VIRTUALMEMORY)
-            void virt_size(uint l) { memory.virt_length = l; }
+            void virt_size(size_t l) { memory.virt_length = l; }
         bool running() { return _running; }
         void running(bool b) { _running = b; }
         Thread active_thread() { return active_threads[0]; }

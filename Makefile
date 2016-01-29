@@ -17,7 +17,7 @@ endif
 
 release: DFLAGS = -release -O -inline -L-lrt
 release: all
-debug: DFLAGS = -wi -debug -L-lrt
+debug: DFLAGS = -g -wi -debug -L-lrt
 debug: all
 profile: DFLAGS = -wi -profile -L-lrt
 profile: all

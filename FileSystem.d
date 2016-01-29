@@ -261,18 +261,18 @@ void set_entry_block(string path, BLOCK block)
     }
 }
 
-bool isdir(string path)
+bool isDir(string path)
 {
     BLOCK bytes = get_entry_block(path);
     KFSBlockHeader header = from_block!(KFSBlockHeader)(bytes);
-    return (header.used && header.isdir);
+    return (header.used && header.isDir);
 }
 
-bool isfile(string path)
+bool isFile(string path)
 {
     BLOCK bytes = get_entry_block(path);
     KFSBlockHeader header = from_block!(KFSBlockHeader)(bytes);
-    return (header.used && header.isfile);
+    return (header.used && header.isFile);
 }
 
 bool exists(string path)
@@ -295,7 +295,7 @@ ulong getSize(string path)
 {
     BLOCK bytes = get_entry_block(path);
     KFSBlockHeader header = from_block!(KFSBlockHeader)(bytes);
-    if(header.isfile)
+    if(header.isFile)
     {
         KFSFileEntry fileent = from_block!(KFSFileEntry)(bytes);
         return fileent.size;
@@ -342,13 +342,13 @@ void chdir(string path, size_t parent = 0)
                 DISK.rawRead(bytes);
                 header.bytes[0..$] = bytes[0..header.bytes.length];
                 //stderr.writef("KFSBlockHeader for %s: [%s](%d)(%d)\n",  split[0..i + 1].join("/"), header.data, bytes[0], header.data.attributes);
-                if(!header.data.used || !header.data.isdir)
+                if(!header.data.used || !header.data.isDir)
                 {
                     throw(new Exception(format("%s is not a directory in %s\n", split[i], split[0..i])));
                 }
                 dir.bytes[0..$] = bytes[0..dir.bytes.length];
                 new_cwd = CWD(split[0..i + 1].join("/"), dir.data, dirent.block);
-                //stderr.writef("isdir: %s is a directory\n", split[0..i + 1]);
+                //stderr.writef("isDir: %s is a directory\n", split[0..i + 1]);
             }
             else
             {
@@ -394,8 +394,8 @@ void mkdir(string path)
         DISK.seek(cwd.block * KFS.block_size);
         DISK.rawWrite(to_block(dir));
         assert(exists(path));
-        assert(isdir(path));
-        //stderr.writef("mkdir: isdir %s\n", path);
+        assert(isDir(path));
+        //stderr.writef("mkdir: isDir %s\n", path);
         chdir(path);
         //stderr.writef("mkdir: chdir %s\n", path);
 
@@ -451,7 +451,7 @@ void touch(string path)
     }
     assert(exists(path));
     //stderr.writef("touch: %s entries()[%s]\n", cwd.path, cwd.dir.entries());
-    assert(isfile(path));
+    assert(isFile(path));
 }
 
 void copy(string src_path, string dst_path)
@@ -507,7 +507,7 @@ void remove(string path)
     {
         //stderr.writef("Need to remove entry %s\n", dirent.name);
         // if file
-        if(dirent.isfile)
+        if(dirent.isFile)
         {
             // free all data blocks
             KFSFileEntry deleteme = from_block!(KFSFileEntry)(dirent.entry_block);
@@ -524,7 +524,7 @@ void remove(string path)
             }
         }
         // if dir
-        else if(dirent.isdir)
+        else if(dirent.isDir)
         {
             // if used_blocks == 0 error
             KFSDirectory deleteme = from_block!(KFSDirectory)(dirent.entry_block);
@@ -763,14 +763,14 @@ struct KFSBlockHeader
             size_t, "lastWriteTime", 18,
             size_t, "ref_count", 8,
             bool, "used",   1,
-            bool, "isdir",  1,
-            bool, "isfile", 1,
+            bool, "isDir",  1,
+            bool, "isFile", 1,
             )
         );
     }
     string toString()
     {
-        return format("%s %s %s", used, isdir, isfile);
+        return format("%s %s %s", used, isDir, isFile);
     }
 }
 
@@ -786,7 +786,7 @@ public:
     {
         header.attributes = 0;
         header.used = used;
-        header.isfile = true;
+        header.isFile = true;
         header.ref_count = 1;
     }
 }
@@ -801,7 +801,7 @@ public:
     {
         header.attributes = 0;
         header.used = used;
-        header.isfile = true;
+        header.isFile = true;
     }
 }
 
@@ -1158,16 +1158,16 @@ public:
         entry = _entry;
     }
 
-    bool isdir()
+    bool isDir()
     {
         ensureStatDone();
-        return header.isdir;
+        return header.isDir;
     }
 
-    bool isfile()
+    bool isFile()
     {
         ensureStatDone();
-        return header.isfile;
+        return header.isFile;
     }
     
     ulong size()
@@ -1182,28 +1182,16 @@ public:
         return(name != "/");
     }
 
-    int lastWriteTime()
+    @property SysTime timeLastModified()
     {
         ensureStatDone();
-        return header.createTime + header.lastWriteTime;
+        return SysTime(unixTimeToStdTime(header.createTime + header.lastWriteTime));
     }
 
-    int createTime()
+    @property SysTime timeCreated()
     {
         ensureStatDone();
-        return header.createTime;
-    }
-
-    string lastWriteTime_str()
-    {
-        ensureStatDone();
-        return SysTime(unixTimeToStdTime(header.createTime + header.lastWriteTime)).toString();
-    }
-
-    string createTime_str()
-    {
-        ensureStatDone();
-        return SysTime(unixTimeToStdTime(header.createTime)).toString();
+        return SysTime(unixTimeToStdTime(header.createTime));
     }
 
     void ensureStatDone()
@@ -1214,7 +1202,7 @@ public:
             DISK.seek(entry.block * KFS.block_size);
             DISK.rawRead(entry_block);
             header = from_block!(KFSBlockHeader)(entry_block);
-            if(header.isfile)
+            if(header.isFile)
             {
                 KFSFileEntry file = from_block!(KFSFileEntry)(entry_block);
                 _size = file.size;
@@ -1298,7 +1286,7 @@ public:
     this(bool used)
     {
         header.used = used;
-        header.isdir = true;
+        header.isDir = true;
     }
 
     void add_entry(string name, size_t block)
@@ -1485,7 +1473,7 @@ public:
             file.close();
         kfsfile = f;
     }
-    T[] rawRead(T)(ref T[] bytes)
+    T[] rawRead(T)(T[] bytes)
     {
         if(is_File)
             return file.rawRead(bytes);
@@ -1569,34 +1557,34 @@ unittest
     // test mkfs
     mkfs(100 * KFS.block_size);
     // Test directory functions
-    assert(isdir("/"));
+    assert(isDir("/"));
     chdir("/");
     mkdir("/home");
     assert(exists("/home"));
-    assert(isdir("/home"));
+    assert(isDir("/home"));
     mkdir("/home/kai/");
     assert(exists("/home/kai"));
-    assert(isdir("/home/kai"));
+    assert(isDir("/home/kai"));
     mkdir("/home/kai/school");
     assert(exists("/home/kai/school"));
-    assert(isdir("/home/kai/school"));
+    assert(isDir("/home/kai/school"));
     mkdir("/home/kai/school/VM");
     assert(exists("/home/kai/school/VM"));
-    assert(isdir("/home/kai/school/VM"));
+    assert(isDir("/home/kai/school/VM"));
 
     // Test touch
     touch("/test.txt");
     assert(exists("/test.txt"));
-    assert(isfile("/test.txt"));
+    assert(isFile("/test.txt"));
     touch("/home/test.txt");
     assert(exists("/home/test.txt"));
-    assert(isfile("/home/test.txt"));
+    assert(isFile("/home/test.txt"));
     touch("/home/kai/test1.txt");
     assert(exists("/home/kai/test1.txt"));
-    assert(isfile("/home/kai/test1.txt"));
+    assert(isFile("/home/kai/test1.txt"));
     touch("/home/kai/test.txt");
     assert(exists("/home/kai/test.txt"));
-    assert(isfile("/home/kai/test.txt"));
+    assert(isFile("/home/kai/test.txt"));
 
     // Test Writing and file size
     size_t file_size = 0;
@@ -1645,7 +1633,7 @@ unittest
     DirIterator entries = dirEntries("/home/kai", SpanMode.shallow);
     foreach (DirEntry e; entries) 
     {
-        if(e.isdir())
+        if(e.isDir())
             std.stdio.writef("%-20s/%10.2fK\n", e.name, cast(float)e.size / 1024);
         else
             std.stdio.writef("%-20s%10.2fK\n", e.name, cast(float)e.size / 1024);
@@ -1666,7 +1654,7 @@ unittest
     try remove("/home/kai/");
     catch {}
     assert(exists("/home/kai/"));
-    assert(isdir("/home/kai/"));
+    assert(isDir("/home/kai/"));
     remove("/home/kai/test.txt");
     assert(!exists("/home/kai/test.txt"));
 
@@ -1677,21 +1665,21 @@ unittest
     touch("/rename/file2.txt");
     rename("/rename/file1.txt", "/rename/file3.txt");
     assert(!exists("/rename/file1.txt"));
-    assert(isfile("/rename/file3.txt"));
+    assert(isFile("/rename/file3.txt"));
     mkdir("/rename2");
     rename("/rename/file2.txt", "/rename2/file2.txt");
     rename("/rename/file3.txt", "/rename2/file3.txt");
     assert(!exists("/rename/file2.txt"));
-    assert(isfile("/rename2/file2.txt"));
+    assert(isFile("/rename2/file2.txt"));
     assert(!exists("/rename/file3.txt"));
-    assert(isfile("/rename2/file3.txt"));
+    assert(isFile("/rename2/file3.txt"));
     rename("/rename2/file2.txt", "/file2.txt");
     assert(!exists("/rename2/file2.txt"));
-    assert(isfile("/file2.txt"));
+    assert(isFile("/file2.txt"));
     remove("/rename");
     rename("/rename2", "/rename");
     assert(!exists("/rename2"));
-    assert(isdir("/rename"));
+    assert(isDir("/rename"));
 
     // Test copy
     chdir("/");
