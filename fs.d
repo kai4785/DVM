@@ -37,12 +37,11 @@ int main(string[] args)
         "touch",  &touch_path
     );
     debug(args) stdio.stderr.writef("args post-getopt: %s\n", args);
-    debug(args) stdio.stderr.writef("copy: %s\n", copy);
-    if(mkfs)
+    if(mkfs && fs_size)
     {
         if(fs_size > 0 && disk.length)
         {
-            debug(mkfs) stderr.writef("Creating new filesystem on disk [%s] of size [%d]\n", disk, fs_size);
+            stdio.stdout.writef("Creating new filesystem on disk [%s] of size [%d]\n", disk, fs_size);
             if(file.exists(disk))
                 throw(new Exception(format("Unwilling to destroy existing file in mkfs: [%s]\n", disk)));
             KFS.DISK = stdio.File(disk, "w+b");
@@ -139,10 +138,6 @@ int main(string[] args)
         }
 
         KFS.DISK.close();
-    }
-    else
-    {
-        stdio.stderr.writef("No recognized options\n");
     }
     stdio.stderr.writef("Done\n");
     return retval;

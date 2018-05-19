@@ -1,14 +1,16 @@
 #!/bin/bash
-set -e
+set -ex
 
 mkdir -p fillup
 for num in `seq 1 20`; do
-    dd if=/dev/zero of=fillup/fillup$num.zero bs=1K count=50 >/dev/null 2>&1
+    dd if=/dev/zero of=fillup/fillup$num.zero bs=512 count=60 >/dev/null 2>&1 &
 done
-./fs --disk DISK --mkfs --size 1048576 && \
-./fs --disk DISK --mkdir /fillup && \
+wait
+rm -f fillup.DISK
+./fs --disk fillup.DISK --mkfs --size 1048576
+./fs --disk fillup.DISK --mkdir /fillup
 for file in fillup/*.zero; do
-    ./fs --disk DISK --copy $file --to $file
+    ./fs --disk fillup.DISK --copy $file,/afile
 done
 rm -fr fillup
-rm -f DISK
+rm -f fillup.DISK
