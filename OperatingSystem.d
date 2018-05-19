@@ -2,8 +2,8 @@
 
 module OperatingSystem;
 
-version = STDIO;
-//version = KaiFS;
+//version = STDIO;
+version = KaiFS;
 //version = TINY;
 //debug = readhex;
 version(STDIO)
@@ -440,6 +440,7 @@ private:
     uint OF; // Offset
     uint TC; // Hardware Thread Count
     bool echo = false;
+    string m_disk_path = "DISK";
 
     PerfMetrics metrics;
     class PerfMetrics
@@ -543,6 +544,7 @@ private:
                 enforce(cur_proc.R[SB] > cur_proc.size, "Process plus stack does not fit inside the static size of memory (proc_size_in_memory)");
 
                 MemoryManagement!(ulong[32]) system_memory = read_memory!(MemoryManagement!(ulong[32]))();
+                //writef("System Memory info: vm.size[%d], bits in map[%d], system_memory.block_size[%d]\n", vm.size, system_memory.used, system_memory.block_size);
                 cur_proc.R[OF] = to!(int)(system_memory.allocate(cur_proc.size_in_memory));
 
                 MemoryManagement!(ulong[4]) proc_memory;
@@ -834,7 +836,7 @@ private:
         {
             if(auto m = std.regex.matchFirst(args, r"^\s*(\d+)\s*$"))
             {
-                uint pid = to!(uint)(m.pre);
+                uint pid = to!(uint)(m.hit);
                 if((process_list[pid]) is null)
                 {
                     error = true;
@@ -1193,7 +1195,7 @@ public:
         stdin = new FileCompat(std.stdio.stdin);
         stdout = new FileCompat(std.stdio.stdout);
         stderr = new FileCompat(std.stdio.stderr);
-        
+
         vm.register_TRP_handler(0, &TRP_terminate);
         vm.register_TRP_handler(1, &TRP_write_int);
         vm.register_TRP_handler(2, &TRP_read_int);
@@ -1223,7 +1225,7 @@ public:
             system_memory.used = system_memory.max_used;
             vm.size = (system_memory.used * system_memory.block_size) / 2;
             stderr.writef("Size: %d\n", vm.size);
-            vm.virt_size = system_memory.used * system_memory.block_size;
+            //vm.virt_size = system_memory.used * system_memory.block_size;
             stderr.writef("Virt_size: %d\n", vm.size);
         }
         system_memory.allocate(system_memory.sizeof);
@@ -1293,51 +1295,63 @@ public:
         metrics = new PerfMetrics;
     }
 
-    void shell(std.stdio.File instream, bool _echo = false) {
-        DISK = std.stdio.File("DISK", "r+b");
-        try
-        {
-            chdir(std.file.getcwd());
-        }
-        catch(Exception e)
-        {
-            chdir("/");
-            stderr.writef("Failed to chdir to host Environment \"PWD\" [%s]: %s\n", std.file.getcwd(), e.msg);
-        }
-        echo = _echo;
-        shell_proc = new Process("shell", [stdin, stdout, stderr]);
-        shell_proc.state = 3;
-        shell_proc.pid = max_procs;
-        string input;
-        while(!alldone && !instream.error && !instream.eof) {
-            writef("%s", prompt);
-            input = chomp(instream.readln());
-            if(input.length > 1 && input[0] == '#') // Discard comments
+    void set_disk(string disk) {
+        m_disk_path = disk;
+    }
+
+    int shell(std.stdio.File instream, bool _echo = false) {
+        int retval = 0;
+        try {
+            DISK = std.stdio.File(m_disk_path, "r+");
+            try
             {
-                input = chomp(instream.readln());
+                chdir(std.file.getcwd());
             }
-            if(echo)
-                writef("%s\n", input);
-            if(auto m = std.regex.matchFirst(input, r"\s*(\S+)\s*(.*)")) {
-                void delegate(string) cmd = commands.get(m[1], null);
-                if(cmd !is null)
+            catch(Exception e)
+            {
+                stderr.writef("Failed to chdir to host Environment \"PWD\" [%s]: %s\n", std.file.getcwd(), e.msg);
+                chdir("/");
+            }
+            echo = _echo;
+            shell_proc = new Process("shell", [stdin, stdout, stderr]);
+            shell_proc.state = 3;
+            shell_proc.pid = max_procs;
+            string input;
+            while(!alldone && !instream.error && !instream.eof && retval == 0) {
+                writef("%s", prompt);
+                input = chomp(instream.readln());
+                if(input.length > 1 && input[0] == '#') // Discard comments
                 {
-                    try
+                    input = chomp(instream.readln());
+                }
+                if(echo)
+                    writef("%s\n", input);
+                if(auto m = std.regex.matchFirst(input, r"\s*(\S+)\s*(.*)")) {
+                    void delegate(string) cmd = commands.get(m[1], null);
+                    if(cmd !is null)
                     {
-                        cmd(m[2]);
+                        try
+                        {
+                            cmd(m[2]);
+                        }
+                        catch(Exception e)
+                        {
+                            stderr.writef("%s failed: %s\n", m[1], e.msg);
+                            retval = 1;
+                        }
                     }
-                    catch(Exception e)
+                    else
                     {
-                        stderr.writef("%s failed: %s\n", m[1], e.msg);
+                        unknown_command(input);
                     }
                 }
-                else
-                {
-                    unknown_command(input);
-                }
-            } 
+            }
+            shell_proc.state = 4;
+        } catch (Exception e){
+            stderr.writef("Exception thrown! : %s\n", e.msg);
+            retval = 1;
         }
-        shell_proc.state = 4;
         DISK.close();
+        return retval;
     }
 }

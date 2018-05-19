@@ -2,7 +2,7 @@
 # I've decided to throw away my sanity, and try to do this in D
 # And also write code that works on both Windows and Linux
 
-COMPILER = dmd
+COMPILER = gdc
 
 # Differentiate between a Linux and Windows build
 ifeq (${windir},)

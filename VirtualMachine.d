@@ -7,6 +7,7 @@ import std.file;
 import std.conv;
 import std.string;
 import std.exception;
+import core.stdc.string : memcpy;
 
 import Utilities;
 import Assembler;
@@ -17,6 +18,7 @@ import Assembler;
 //debug = memory_access;
 //debug = vmemory_access;
 //debug = paging;
+//debug = load;
 version = VIRTUALMEMORY;
 
 class Thread {
@@ -89,7 +91,7 @@ struct VirtualMemory
     size_t least_used_page()
     {
         size_t least_used = size_t.max;
-        foreach(key; pages.keys.sort)
+        foreach(key; pages.keys)
         {
             if(pages[key] >= 0)
             {
@@ -109,7 +111,7 @@ struct VirtualMemory
     size_t unused_swapped_page()
     {
         size_t unused_swap = size_t.max;
-        foreach(key; pages.keys.sort)
+        foreach(key; pages.keys)
         {
             if(pages[key] < 0)
             {
@@ -235,7 +237,7 @@ struct VirtualMemory
                 start, start >> offset_bits, start << page_bits >> page_bits, virt2phys(start),
                 end, end >> offset_bits, end << page_bits >> page_bits, virt2phys(end)
             );
-        enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSlice: Memory access across >2 pages is unimplemented");
+        //enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSlice: Memory access across >2 pages is unimplemented");
         return memory[virt2phys(start)..virt2phys(end)];
     }
     void opSliceAssign(ByteCode b, size_t start, size_t end)
@@ -245,7 +247,7 @@ struct VirtualMemory
                 start, start >> offset_bits, start << page_bits >> page_bits, virt2phys(start),
                 end, end >> offset_bits, end << page_bits >> page_bits, virt2phys(end)
             );
-        enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSliceAssign: Memory access across >2 pages is unimplemented");
+        //enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSliceAssign: Memory access across >2 pages is unimplemented");
         memory[virt2phys(start)..virt2phys(end)] = b;
     }
     void opSliceAssign(const ByteCode b[], size_t start, size_t end)
@@ -256,7 +258,7 @@ struct VirtualMemory
                 start, start >> offset_bits, start << page_bits >> page_bits, virt2phys(start),
                 end, end >> offset_bits, end << page_bits >> page_bits, virt2phys(end)
             );
-        enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSliceAssign[]: Memory access across >2 pages is unimplemented");
+        //enforce((end >> offset_bits) - (start >> offset_bits) < 2, "opSliceAssign[]: Memory access across >2 pages is unimplemented");
         memory[virt2phys(start)..virt2phys(end)] = b[0..$];
     }
     void opSliceAssign(ByteCode b)
@@ -884,6 +886,11 @@ public:
         bool running() { return _running; }
         void running(bool b) { _running = b; }
         Thread active_thread() { return active_threads[0]; }
+        version(VIRTUALMEMORY) {
+            ByteCode[] raw_memory() {return memory.memory;}
+        } else {
+            ByteCode[] raw_memory() {return memory;}
+        }
     }
 
     void set_vm_threads(Thread[] ac, Thread[] av)
@@ -942,9 +949,11 @@ public:
 
     void load(in ByteCode[] data, size_t loc) {
         debug(load) 
-            stderr.writef("load: Loading [%s] bytes of bytecode into memory at [%d->%d/%d].\n", data.length, loc, loc + data.length - 1, memory.length);
+            stderr.writef("load: Loading [%s] bytes of bytecode into memory at [%d->%d/%d].\n",
+                data.length, loc, loc + data.length - 1, memory.length);
         if (loc + data.length > memory.length) {
-            string msg = "load: Not enough room to load [" ~ to!(string)(data.length) ~ "] bytes into memory at position [" ~ to!(string)(loc) ~ "].\n";
+            string msg = "load: Not enough room to load [" ~ to!(string)(data.length) ~
+                "] bytes into memory at position [" ~ to!(string)(loc) ~ "].\n";
             msg       ~= "load: Memory size is [" ~ to!(string)(memory.length) ~ "] bytes.";
             throw(new Exception(msg));
         }

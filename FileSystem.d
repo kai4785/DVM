@@ -47,9 +47,11 @@ public:
     {
         _DISK = disk;
     }
+    @property int error() { return _DISK.error; }
     void opAssign(std.stdio.File disk)
     {
         _DISK = disk;
+        assert(!_DISK.error);
     }
     void seek(size_t pos)
     in 
@@ -195,7 +197,7 @@ KFSDirectory get_root()
 in
 {
     // TODO: Ensure that DISK is open
-    //assert(DISK)
+    assert(!DISK.error);
 }
 body
 {
@@ -307,6 +309,12 @@ ulong getSize(string path)
 }
 
 void chdir(string path, size_t parent = 0)
+in
+{
+    // TODO: Ensure that DISK is open
+    assert(!DISK.error);
+}
+body
 {
     // Update path to be absolute
     //stderr.writef("chdir: path [%s]\n", path);

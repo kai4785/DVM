@@ -7,15 +7,28 @@ import std.getopt;   // For getting options from the commandline
 
 import OperatingSystem;
 
-void main(string args[]) {
+int main(string args[]) {
+    string script, disk;
+    auto helpInfo = getopt(
+        args,
+        "script",  "Script to run", &script,
+        "disk",    "Disk to open",  &disk,
+    );
+    if(helpInfo.helpWanted) {
+        defaultGetoptPrinter("os: ", helpInfo.options);
+        return 0;
+    }
     OperatingSystem os = new OperatingSystem();
-    if(args.length > 1 && exists(args[1]) && isFile(args[1]))
-    {
-        File instream = File(args[1], "r");
-        os.shell(instream, true);
+    if(!disk.empty) {
+        os.set_disk(disk);
+    }
+    if(!script.empty) {
+        File instream = File(script, "r");
+        return os.shell(instream, true);
     }
     else
     {
-        os.shell(std.stdio.stdin);
+        return os.shell(std.stdio.stdin);
     }
+    return 0;
 }

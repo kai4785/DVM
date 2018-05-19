@@ -13,20 +13,31 @@ import Utilities;
 //debug = mkfs;
 //debug = args;
 
-void main(string[] args)
+int main(string[] args)
 {
     bool mkfs = false;
     string ls_path;
     string ll_path;
-    string copy_from;
-    string copy_to;
+    string[] copy;
     string mkdir_path;
     string touch_path;
     size_t fs_size;
     string disk;
-    debug(args) stderr.writef("args pre-getopt: %s\n", args);
-    getopt(args, "mkfs",  &mkfs, "size", &fs_size, "disk", &disk, "ll", &ll_path, "ls", &ls_path, "copy", &copy_from, "to", &copy_to, "mkdir", &mkdir_path, "touch", &touch_path);
-    debug(args) stderr.writef("args post-getopt: %s\n", args);
+    int retval = 0;
+    debug(args) stdio.stderr.writef("args pre-getopt: %s\n", args);
+    arraySep = ",";
+    getopt(args,
+        "mkfs",   &mkfs,
+        "size",   &fs_size,
+        "disk",   &disk,
+        "ll",     &ll_path,
+        "ls",     &ls_path,
+        "copy",   &copy,
+        "mkdir",  &mkdir_path,
+        "touch",  &touch_path
+    );
+    debug(args) stdio.stderr.writef("args post-getopt: %s\n", args);
+    debug(args) stdio.stderr.writef("copy: %s\n", copy);
     if(mkfs)
     {
         if(fs_size > 0 && disk.length)
@@ -45,7 +56,7 @@ void main(string[] args)
             stdio.stderr.writef("Not enough arguments\n");
         }
     }
-    else if (ll_path.length)
+    if (ll_path.length)
     {
         stdio.stderr.writef("Listing entries for %s\n", ll_path);
         KFS.DISK = stdio.File(disk, "r+b");
@@ -58,7 +69,7 @@ void main(string[] args)
 
         KFS.DISK.close();
     }
-    else if (mkdir_path.length)
+    if (mkdir_path.length)
     {
         stdio.stderr.writef("KFS.mkdir: %s: ", mkdir_path);
         KFS.DISK = stdio.File(disk, "r+b");
@@ -71,11 +82,12 @@ void main(string[] args)
         catch(Exception e)
         {
             stdio.stderr.writef("mkdir %s failed: %s\n", mkdir_path, e.msg);
+            retval = 1;
         }
 
         KFS.DISK.close();
     }
-    else if (touch_path.length)
+    if (touch_path.length)
     {
         stdio.stderr.writef("KFS.touch: %s\n", touch_path);
         KFS.DISK = stdio.File(disk, "r+b");
@@ -85,34 +97,46 @@ void main(string[] args)
 
         KFS.DISK.close();
     }
-    else if (copy_from.length && copy_to.length)
+    if (copy.length)
     {
-        stdio.stderr.writef("Copy! %s->%s: ", copy_from, copy_to);
-
+        string copy_dest = "/";
+        if(copy.length > 1) {
+            copy_dest = copy[$-1];
+            copy.length = copy.length - 1;
+        }
         KFS.DISK = stdio.File(disk, "r+b");
-        try
-        {
-            //stdio.stderr.writef("Opening %s in \"r\" mode\n", copy_from);
-            KFS.FileCompat infile = new KFS.FileCompat(stdio.File(copy_from, "r"));
-            //stdio.stderr.writef("Opening %s in \"w+\" mode\n", copy_to);
-            KFS.FileCompat outfile = new KFS.FileCompat(KFS.File(copy_to, "w+"));
-            //stdio.stderr.writef("Done Opening files\n");
 
-            ByteCode[] bytes;
-            bytes.length = cast(uint)(std.file.getSize(copy_from));
-            if(bytes.length)
+        foreach(copy_from; copy) {
+            string copy_to;
+            if(copy_dest[$-1] == '/')
+                copy_to = copy_dest ~ copy_from;
+            else
+                copy_to = copy_dest;
+            stdio.stderr.writef("Copy file from host %s->%s\n", copy_from, copy_to);
+            try
             {
-                infile.rawRead(bytes);
-                outfile.rawWrite(bytes);
-            }
-            outfile.close();
-            infile.close();
-        }
-        catch(Exception e)
-        {
-            stdio.stderr.writef("Opening %s failed: %s\n", copy_to, e.msg);
-        }
+                //stdio.stderr.writef("Opening %s in \"r\" mode\n", copy_from);
+                KFS.FileCompat infile = new KFS.FileCompat(stdio.File(copy_from, "r"));
+                //stdio.stderr.writef("Opening %s in \"w+\" mode\n", copy_to);
+                KFS.FileCompat outfile = new KFS.FileCompat(KFS.File(copy_to, "w+"));
+                //stdio.stderr.writef("Done Opening files\n");
 
+                ByteCode[] bytes;
+                bytes.length = cast(uint)(std.file.getSize(copy_from));
+                if(bytes.length)
+                {
+                    infile.rawRead(bytes);
+                    outfile.rawWrite(bytes);
+                }
+                outfile.close();
+                infile.close();
+            }
+            catch(Exception e)
+            {
+                stdio.stderr.writef("Opening %s failed: %s\n", copy_to, e.msg);
+                retval = 1;
+            }
+        }
 
         KFS.DISK.close();
     }
@@ -121,4 +145,5 @@ void main(string[] args)
         stdio.stderr.writef("No recognized options\n");
     }
     stdio.stderr.writef("Done\n");
+    return retval;
 }
