@@ -548,7 +548,7 @@ public:
         {
             debug(log6) stderr.writef("Function detected [%s]\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
             retval = to!(int)(sizes.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], int.max));
-            if(retval == -1)
+            if(retval == int.max)
             {
                 debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
                 retval = 0;
@@ -568,7 +568,7 @@ public:
         else
         {
             retval = to!(int)(sizes.get(interesting.data["Type"], int.max));
-            if(retval == -1)
+            if(retval == int.max)
             {
                 debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.data["Type"][1..$]);
                 retval = 0;
@@ -829,7 +829,7 @@ class Tcode
             }
             else
             {
-                enforce(false, "Can't find location");
+                enforce(false, format("Can't find location for symbol: %s", Symid));
             }
         }
         return retval;
