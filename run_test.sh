@@ -627,6 +627,37 @@ file_system_test()
     result $function $?
 }
 
+compile () 
+{
+    function="compile"
+    make debug && \
+    ./cm $2.kxi $2.asm && \
+    ./as $2.asm $2.hex && \
+    printf "set echo 1\nload $2.hex < $2.test\nrun 0\nexit\n" | \
+    ./os 
+    result $function $?
+    echo $2
+}
+
+virtualmemory () 
+{
+    function="virtualmemory"
+    printf "set echo 1
+    load nums1.hex
+    load nums1.hex
+    load nums1.hex
+    load nums2.hex
+    load nums3.hex
+    load nums4.hex
+    mem
+    runall
+    mem
+    exit\n" | \
+    ./os 
+    result $function $?
+    echo $2
+}
+
 [[ $1 == "all" ]] || [[ -z "$1" ]] && all
 [[ $1 == "compat" ]] && compat
 [[ $1 == "compat_runall" ]] && compat_runall
@@ -645,5 +676,7 @@ file_system_test()
 [[ $1 == "fillup" ]] && fillup
 [[ $1 == "file_size" ]] && file_size
 [[ $1 == "file_system_test" ]] && file_system_test
+[[ $1 == "compile" ]] && compile $@
+[[ $1 == "virtualmemory" ]] && virtualmemory $@
 
 exit 0;

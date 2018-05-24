@@ -9,6 +9,7 @@ import std.regexp;
 import std.conv;
 import std.exception;
 import std.array;
+import std.algorithm;
 
 //debug = log0; // print_symbols
 //debug = log1; // Grammar debug
@@ -17,11 +18,13 @@ import std.array;
 //debug = log4; // Semantic Action Routines verbose info
 //debug = log5; // Icode
 //debug = log6; // symbol size_of
-debug = log7; // Tcode
+//debug = log7; // Tcode
 //debug = log8; // Tcode extra debug
-
+debug = log9; // Phases
 //debug = SymbolTable; // SymbolTable debug
 //debug = Tokenizer;
+//debug = tokenizer;
+//debug = gen_error;
 
 class Token 
 {
@@ -89,13 +92,13 @@ public:
         token_type_regexps["comment"] = 
             r"//.*";
         token_type_regexps["keyword"] = 
-            r"atoi|bool|class|char|cin|cout|else|false|if|int|itoa|main|new|null|object|public|private|return|string|this|true|void|while";
+            r"atoi\b|class\b|cin\b|cout\b|else\b|false\b|if\b|itoa\b|main\b|new\b|null\b|object\b|public\b|private\b|return\b|string\b|this\b|true\b|while\b";
         token_type_regexps["modifier"] = 
-            r"public|private";
+            r"public\b|private\b";
         token_type_regexps["class_name"] = 
             r"";
         token_type_regexps["type"] = 
-            r"int|char|bool|void"; // Or class_name 
+            r"int\b|char\b|bool\b|void\b"; // Or class_name 
         token_type_regexps["printable_ascii"] = 
             r"[\x20-\x7E]"; // ASCII codes 32-126
         token_type_regexps["nonprintable_ascii"] = 
@@ -120,7 +123,7 @@ public:
         token_type_regexps["io_operator"] = 
             r"<<|>>";
         token_type_regexps["identifier"] = 
-            r"[A-Za-z][A-Za-z_0-9]{0,79}"; 
+            r"[A-Za-z][A-Za-z_0-9]{0,79}\b"; 
         token_type_regexps["punctuation"] = 
             r"[;,.]";
         token_type_regexps["math_symbol"] = 
@@ -167,7 +170,7 @@ public:
         //stderr.writef("Adding class: %s\n", new_type);
         if(!token_type_regexps.get("class_name", "").length)
         {
-            token_type_regexps["class_name"] = new_type;
+            token_type_regexps["class_name"] = new_type ~ r"\b";
         }
         else
         {
@@ -273,6 +276,7 @@ public:
                     if(RegExp m = std.regexp.search(buffer, r"^(" ~ search_value ~ r")" ~ grammar.token_type_regexps["ws"] ~ r"*")) 
                     {
                         buffer = m.post();
+                        debug(tokenizer) stderr.writef("Picked out the token [%s][%s]\n", type, m.match(1));
                         tokens ~= new Token(m.match(1), type, _line_num);
                         found = true;
                         break;
@@ -367,7 +371,7 @@ public:
         }
         else
         {
-            data["Param"] ~= "|" ~ param;
+            data["Param"] = param ~ "|" ~ data["Param"];
         }
     }
 
@@ -390,8 +394,8 @@ private:
 public:
     this() 
     {
-        sizes["char"] = 1;
-        sizes["bool"] = 1;
+        sizes["char"] = 4;
+        sizes["bool"] = 4;
         sizes["int"] = 4;
     }
 
@@ -415,23 +419,23 @@ public:
     {
         //foreach(id; symIDsymbols.byKey())
         //{
-        //    foreach(symbol; symIDsymbols[id])
-        //    {
-        //        writef("[%s] %s\n", id, symbol);
-        //    }
+        //    writef("[%s] %s\n", id, symIDsymbols[id]);
         //}
         foreach(id; scopesymbols.byKey())
         {
             foreach(symbol; scopesymbols[id])
             {
-                writef("[%s] %s\n", id, symbol);
+                stderr.writef("[%s] %s\n", id, symbol);
             }
         }
     }
 
     Symbol get(string Symid)
     {
-        return symIDsymbols.get(Symid, null);
+        if(Symid.length && Symid[0] == '*')
+            return symIDsymbols.get(Symid[1..$], null);
+        else
+            return symIDsymbols.get(Symid, null);
     }
 
     Symbol find(string identifier, string[] _scope)
@@ -521,11 +525,11 @@ public:
         return new_symbol;
     }
 
-    uint size_of(string Symid)
+    size_t size_of(string Symid, int line = __LINE__)
     {
-        int retval;
+        size_t retval;
         Symbol interesting = symIDsymbols.get(Symid, null);
-        debug(log6) stderr.writef("Checking size of %s\n", interesting);
+        debug(log6) stderr.writef("[%d] Checking size of %s, %s\n", line, Symid, interesting);
         enforce(interesting !is null, format("Tried to check size of Symid[%s], but it wasn't there", Symid));
         if(interesting.data.get("Type", "--")[0] == '@')
         {
@@ -533,7 +537,7 @@ public:
             retval = sizes.get(interesting.data["Type"][1..$], -1);
             if(retval == -1)
             {
-                debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.data["Type"][1..$]);
+                debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.data["Type"]);
                 retval = 0;
                 foreach(symbol; scopesymbols.get("g." ~ interesting.data["Type"][1..$], null))
                 {
@@ -544,9 +548,9 @@ public:
                 sizes[interesting.data["Type"][1..$]] = retval;
             }
         }
-        else if(interesting.info["Kind"] == "method")
+        else if(interesting.info["Kind"] == "class")
         {
-            debug(log6) stderr.writef("Function detected [%s]\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
+            debug(log6) stderr.writef("Class detected [%s]\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
             retval = sizes.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], -1);
             if(retval == -1)
             {
@@ -554,32 +558,83 @@ public:
                 retval = 0;
                 foreach(symbol; scopesymbols.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], null))
                 {
-                    debug(log6) stderr.writef("%s\n", symbol);
-                    debug(log6) stderr.writef("Size is: %d\n", sizes.get(symbol.data.get("Type", ""), 4));
                     if(symbol.info.get("Kind", "UNKNOWN") != "method")
                     {
+                        debug(log6) stderr.writef("%s\n", symbol);
+                        debug(log6) stderr.writef("Size is: %d\n", sizes.get(symbol.data.get("Type", ""), 4));
+                        symbol.data["HeapPos"] = format("+%s", retval);
                         retval += sizes.get(symbol.data.get("Type", ""), 4);
-                        symbol.data["StackPos"] = format("-%s", retval);
+                        //stderr.writef("%s\n", symbol);
+                    }
+                    else
+                    {
+                        debug(log6) stderr.writef("Skiping function %s\n", symbol.info["Value"]);
                     }
                 }
                 sizes[interesting.info["Scope"] ~ "." ~ interesting.info["Value"]] = retval;
             }
+            //stderr.writef("Total size: %d\n", retval);
+            //enforce(false, "unimplemented size_of for a class");
+        }
+        else if(interesting.info["Kind"] == "method")
+        {
+            debug(log6) stderr.writef("Function detected [%s]\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
+            retval = sizes.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], -1);
+            if(retval == -1)
+            {
+                debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
+                //stderr.writef("All Symbols: %s\n", scopesymbols.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], null));
+                // Automatically allocate 4 bytes for the PFP, and 4 bytes for 'this'
+                retval = 8;
+                foreach(symid; std.string.split(interesting.data.get("Param", ""),"|"))
+                {
+                    debug(log6) stderr.writef("Need to add this: %s\n", symid);
+                    Symbol symbol = get(symid);
+                    retval += sizes.get(symbol.data.get("Type", ""), 4);
+                    symbol.data["StackPos"] = format("-%s", retval);
+                }
+                foreach(symbol; scopesymbols.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], null))
+                {
+                    debug(log6) stderr.writef("Encountered this while inspecting the method %s %s\n", symbol.info.get("Kind", "UNKNOWN"), symbol.info["Value"]);
+                    if(symbol.info.get("Kind", "UNKNOWN") != "param")
+                    {
+                        retval += sizes.get(symbol.data.get("Type", ""), 4);
+                        symbol.data["StackPos"] = format("-%s", retval);
+                    }
+                    else
+                    {
+                        debug(log6) stderr.writef("Skipping %s\n", symbol.info["Value"]);
+                    }
+                    //debug(log6) stderr.writef("Size of %s is: %d\n", symbol.info.get("Kind", "UNKNOWN"), sizes.get(symbol.data.get("Type", ""), 4));
+                    //debug(log6) stderr.writef("%s\n", symbol);
+                }
+                sizes[interesting.info["Scope"] ~ "." ~ interesting.info["Value"]] = retval;
+            }
+        }
+        else if(interesting.info["Kind"] == "lvar")
+        {
+            Symbol type_symbol = find(interesting.data["Type"], interesting.info["Scope"]);
+            enforce(type_symbol !is null, "Tried to find the type, and failed");
+            retval = size_of(type_symbol.info["Symid"]);
         }
         else
         {
             retval = sizes.get(interesting.data["Type"], -1);
             if(retval == -1)
             {
-                debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.data["Type"][1..$]);
                 retval = 0;
-                foreach(symbol; scopesymbols.get("g." ~ interesting.data["Type"], null))
+                debug(log6) stderr.writef("**** Need to calculate size of a %s %s\n", interesting.info["Kind"], interesting.data["Type"]);
+                if(interesting.info.get("Kind", "") != "method")
                 {
-                    debug(log6) stderr.writef("%s\n", symbol);
-                    // If I haven't calculated the size yet, it's gotta be a reference
-                    debug(log6) stderr.writef("Size is %s\n", sizes.get(symbol.data.get("Type", ""), 0)); 
-                    retval += sizes.get(symbol.data.get("Type", ""), 0);
+                    debug(log6) stderr.writef("Size is %s\n", sizes.get(interesting.data.get("Type", ""), 4)); 
+                    retval += sizes.get(interesting.data.get("Type", ""), 4);
+                    sizes[interesting.data["Type"]] = retval;
                 }
-                sizes[interesting.data["Type"]] = retval;
+                else
+                {
+                    debug(log6) stderr.writef("Size is %s\n", 0);
+                }
+                //enforce(false, format("Unknown type %s %s", interesting.info["Kind"], interesting.info["Value"]));
             }
         }
         debug(log6) stderr.writef("All sizes: %s\n", sizes);
@@ -604,6 +659,9 @@ class Tcode
     string[string] q2;
     File outfile;
     string cur_label;
+    int[string] label_count;
+    string this_Symid;
+    string FP;
     this(string[4][] data, string[size_t] labels, SymbolTable symbols)
     {
         this.data = data;
@@ -612,40 +670,64 @@ class Tcode
         valid_registers = new Valid_Registers();
         quad_ops["FRAME"] = &do_FRAME;
         quad_ops["CALL"]  = &do_CALL;
+        quad_ops["PUSH"]  = &do_PUSH;
+        quad_ops["POP"]   = &do_POP;
         quad_ops["PEEK"]  = &do_PEEK;
+        quad_ops["MOVI"]  = &do_MOVI;
         quad_ops["MOV"]   = &do_MOV;
         quad_ops["JMP"]   = &do_JMP;
+        quad_ops["AND"]   = &do_AND;
+        quad_ops["OR"]    = &do_OR;
         quad_ops["BF"]    = &do_BF;
+        quad_ops["EQ"]    = &do_EQ;
+        quad_ops["NE"]    = &do_NE;
         quad_ops["LT"]    = &do_LT;
         quad_ops["GT"]    = &do_GT;
+        quad_ops["GE"]    = &do_GE;
+        quad_ops["LE"]    = &do_LE;
         quad_ops["WRITE"] = &do_WRITE;
+        quad_ops["READ"]  = &do_READ;
         quad_ops["ADD"]   = &do_ADD;
         quad_ops["SUB"]   = &do_SUB;
+        quad_ops["MUL"]   = &do_MUL;
+        quad_ops["DIV"]   = &do_DIV;
         quad_ops["RTN"]   = &do_RTN;
+        quad_ops["RETURN"]= &do_RETURN;
+        quad_ops["NEW"]   = &do_NEW;
+        quad_ops["NEWI"]  = &do_NEWI;
+        quad_ops["REF"]   = &do_REF;
         quad_ops["EOP"]   = &do_EOP;
+        quad_ops["NOP"]   = &do_NOP;
         foreach(key; valid_registers.to_Register.keys())
         {
             if(key[0] == 'R' && key[1] != '0') // General purpose registers start with R, special purpose ones don't
             {
-                stderr.writef("%s\n", key);
+                //stderr.writef("%s\n", key);
                 unused_registers ~= key;
             }
         }
+        FP = "FP";
     }
-    void print_line(string opcode, string op1, string op2)
+    string gen_label(string new_label)
+    {
+        label_count[new_label] = label_count.get(new_label, 0) + 1;
+        return format("%s%d", new_label, label_count[new_label]);
+    }
+    void print_line(string opcode, string op1, string op2 = "", string comment = ";")
     {
         // Print the line, and consume the label
+        assert(comment[0] == ';');
         if(op2.empty)
-            outfile.writef("%-8s%-8s%-8s\n", cur_label, opcode, op1);
+            outfile.writef("%-10s%-8s%-8s%-8s%s\n", cur_label, opcode, op1, op2, comment);
         else
-            outfile.writef("%-8s%-8s%-8s%-8s\n", cur_label, opcode, format("%s,", op1), op2);
+            outfile.writef("%-10s%-8s%-8s%-8s%s\n", cur_label, opcode, format("%s,", op1), op2, comment);
         if(!cur_label.empty)
             cur_label = "";
     }
     void output(File of)
     {
         outfile = of;
-        debug(log7) stderr.write("TCode:\n");
+        debug(log7) stderr.writef("TCode:\n");
         debug(log8) stderr.writef("List of all scopes: %s\n", symbols.scopesymbols.keys());
         // Dump Global data
         foreach(s; symbols.scopesymbols["g"])
@@ -664,7 +746,15 @@ class Tcode
                         staticdata = "0";
                     else if(staticdata == "true")
                         staticdata = "1";
-                    outfile.writef("%s\t%s\t%s\n", s.info["Symid"], ".BYT", staticdata);
+                    //outfile.writef("%s\n", s);
+                    if(s.data.get("Type", "") == "null")
+                    {
+                        outfile.writef("%s\t%s\t%s\t%s\n", s.info["Symid"], ".BYT", "0", ";null");
+                    }
+                    else
+                    {
+                        outfile.writef("%s\t%s\t%s\n", s.info["Symid"], ".BYT", staticdata);
+                    }
                 }
             }
         }
@@ -672,8 +762,9 @@ class Tcode
         foreach(index, quad; data)
         {
             // Debug output
-            //debug(log8) 
-                stderr.writef("[%5d]%-15s %s\n", index, cur_label, quad);
+            debug(log8) 
+                stderr.writef("[%5s]%-15s %s\n", index, cur_label, quad);
+                outfile.writef(";%5s%-15s %s\n", index, cur_label, quad);
             void delegate(string[]) quad_op = quad_ops.get(quad[0], null);
             enforce(quad_op !is null, format("Unimplemented Quad Op [%s]\n", quad[0]));
             // 1. Save Register Data to Memory if Beginning or End of a Basic Block
@@ -698,36 +789,96 @@ class Tcode
             //   b. Generate Target Code to move Operand to Result Register
             // 5. Generate Target Code for Operation
             quad_op(quad[1..4]);
+            // Paranoid
+            free_registers();
         }
     }
 
-    void free_registers()
+    void free_registers(bool save_off = true)
     {
-        stderr.writef("Freeing all registers [%s]\n", symbol_to_register);
-        foreach(symbol; symbol_to_register.keys)
+        if(symbol_to_register.length == 0)
         {
-            debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[symbol], symbol);
-            string[string] tmp = getLocation(symbol);
-            enforce("R" in tmp, "Not in a register");
-            if("S" in tmp)
-            {
-                debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[symbol], tmp);
-                print_line("MOV", "R0", "SP");
-                print_line("ADI", "R0", tmp["S"]);
-                print_line("STR", tmp["R"], "R0");
-            } 
-            else if ("M" in tmp)
-            {
-                debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[symbol], tmp);
-            }
-            else if ("H" in tmp)
-            {
-                enforce(false, "Heap pointers unimplemented");
-            }
-            unused_registers ~= symbol_to_register[symbol];
-            register_to_symbols.remove(symbol_to_register[symbol]);
-            symbol_to_register.remove(symbol);
+            return;
         }
+        debug(log8) stderr.writef("Freeing all registers [%s]\n", symbol_to_register);
+        outfile.writef("; Freeing all registers [%s]\n", symbol_to_register);
+        // Store off all data
+        // Sometimes a tmp register is required, so we can't clear registers
+        foreach(Symid; symbol_to_register.keys)
+        {
+            string freetmp = getRegister("freetmp");
+            debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[Symid], Symid);
+            if(save_off)
+            {
+                string type;
+                string[string] tmp = getLocation(Symid);
+                outfile.writef(";Freeing %s: %s\n", Symid, tmp);
+                enforce("R" in tmp, "Not in a register");
+                if("S" in tmp)
+                {
+                    debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[Symid], tmp);
+                    print_line("MOV", freetmp, FP, format(";Freeing %s:%s", symbols.get(Symid).info["Value"], Symid));
+                    print_line("ADI", freetmp, tmp["S"]);
+                    type = symbols.get(Symid).data["Type"];
+                    //stderr.writef("free_register debug *%s %s %s\n", symbols.get(Symid).data.get("Ref", ""), type, symbols.get(Symid));
+                    if((type == "char" || type == "bool" || type == "null") && symbols.get(Symid).data.get("Ref", null) is null)
+                    {
+                        print_line("STB", tmp["R"], freetmp);
+                    }
+                    else
+                    {
+                        if("RR" in tmp)
+                        {
+                            print_line("STR", tmp["RR"], freetmp);
+                            if((type == "char" || type == "bool" || type == "null"))
+                            {
+                                print_line("STB", tmp["R"], tmp["RR"]);
+                            }
+                            else
+                            {
+                                print_line("STR", tmp["R"], tmp["RR"]);
+                            }
+                        }
+                        else
+                        {
+                            print_line("STR", tmp["R"], freetmp);
+                        }
+                    }
+                } 
+                else if ("M" in tmp)
+                {
+                    debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[Symid], tmp);
+                }
+                else if ("H" in tmp)
+                {
+                    debug(log8) stderr.writef("STORE   %s -> getLocation(%s)\n", symbol_to_register[Symid], tmp);
+                    string tmp1 = getRegister("tmp1");
+                    print_line("MOV", freetmp, FP, format(";free_registers %s:%s", symbols.get(Symid).info["Value"], Symid));
+                    print_line("ADI", freetmp, "-8", format(";%s = &&this", freetmp));
+                    print_line("LDR", tmp1, freetmp, format(";%s = &this", tmp1));
+                    print_line("ADI", tmp1, tmp["H"], format(";%s = &this.%s", tmp1, Symid));
+                    type = symbols.symIDsymbols[Symid].data["Type"];
+                    if(type == "char" || type == "bool" || type == "null")
+                    {
+                        print_line("STB", tmp["R"], tmp1);
+                    }
+                    else
+                    {
+                        print_line("STR", tmp["R"], tmp1);
+                    }
+                    //enforce(false, "Heap pointers unimplemented");
+                }
+            }
+        }
+        // Clear out keys
+        foreach(Symid; symbol_to_register.keys)
+        {
+            unused_registers ~= symbol_to_register[Symid];
+            register_to_symbols.remove(symbol_to_register[Symid]);
+            symbol_to_register.remove(Symid);
+        }
+        //debug(log8) stderr.writef("Freed all registers [%s]\n", symbol_to_register);
+        //outfile.writef("; Freed all registers [%s]\n", symbol_to_register);
     }
 
     // Will return the next available register when invoked.  
@@ -746,17 +897,14 @@ class Tcode
             {
                 stderr.writef("Ran out of registers\n");
                 free_registers();
-                //enforce(false, format("Generate TCode to free a register %s", symbol_to_register));
+                enforce(false, format("Generate TCode to free a register %s", symbol_to_register));
             }
-            //else
-            //{
-                retval = unused_registers[$-1];
-                unused_registers.length -= 1;
-                symbol_to_register[symbol] = retval;
-                register_to_symbols[retval] = [symbol];
-            //}
+            retval = unused_registers[$-1];
+            unused_registers.length -= 1;
+            symbol_to_register[symbol] = retval;
+            register_to_symbols[retval] = [symbol];
         }
-        //stderr.writef("getRegister[%s]\n", retval);
+        debug(log8) stderr.writef("getRegister %s->[%s]\n", symbol, retval);
         return retval;
     }
 
@@ -771,19 +919,27 @@ class Tcode
         string[string] retval;
         if(Symid in symbol_to_register)
         {
-            //retval ~= symbol_to_register[Symid];
             retval["R"] = symbol_to_register[Symid];
         }
         if(Symid in symbols.symIDsymbols)
         {
             if(symbols.symIDsymbols[Symid].info["Scope"] == "g")
             {
-                //retval ~= symbols.symIDsymbols[Symid].info["Symid"];
                 retval["M"] = symbols.symIDsymbols[Symid].info["Symid"];
             }
             else if(symbols.symIDsymbols[Symid].data.get("StackPos", "") != "")
             {
                 retval["S"] = symbols.symIDsymbols[Symid].data["StackPos"];
+            }
+            else if(symbols.symIDsymbols[Symid].data.get("HeapPos", "") != "")
+            {
+                retval["H"] = symbols.symIDsymbols[Symid].data["HeapPos"];
+            }
+            if("*" ~ Symid in symbol_to_register)
+            {
+                //retval["RR"] = retval["R"];
+                //retval["R"] = symbol_to_register["*" ~ Symid];
+                retval["RR"] = symbol_to_register["*" ~ Symid];
             }
         }
         debug(log8) stderr.writef("getLocation: %s[%s]\n", Symid, retval);
@@ -792,44 +948,87 @@ class Tcode
 
     string[string] load_to_reg(string Symid)
     {
-        auto retval = getLocation(Symid);
+        string[string] retval = getLocation(Symid);
+        string type;
+        bool is_ref = false;
         if("R" !in retval)
         {
+            if(Symid[0] == '*')
+            {
+                // Reserve a register for the actual value
+                getRegister(Symid);
+                is_ref = true;
+                Symid = Symid[1..$];
+            }
+            debug(log8) stderr.writef("load_to_reg: %s\n", retval);
             getRegister(Symid);
             retval = getLocation(Symid);
-            stderr.writef("Need to load %s\n", retval);
-            string type = symbols.symIDsymbols[Symid].data["Type"];
+            string tmp0 = getRegister("tmp0");
+            type = symbols.get(Symid).data["Type"];
             if("S" in retval)
             {
-                print_line("MOV", "R0", "FP");
-                print_line("ADI", "R0", retval["S"]);
-                if(type == "char" || type == "bool")
+                string loc = retval.get("RR", retval["R"]);
+                print_line("MOV", tmp0, FP, format(";load_to_reg %s:%s", symbols.get(Symid).info["Value"], Symid));
+                print_line("ADI", tmp0, retval["S"], ";load_to_reg");
+                if(!is_ref && (type == "char" || type == "bool" || type == "null") && symbols.get(Symid).data.get("Ref", null) is null)
                 {
-                    print_line("LDB", retval["R"], "R0");
+                    print_line("LDB", loc, tmp0, ";load_to_reg");
                 }
                 else
                 {
-                    print_line("LDR", retval["R"], "R0");
+                    print_line("LDR", loc, tmp0, ";load_to_reg");
                 }
             }
             else if("M" in retval)
             {
-                if(type == "char" || type == "bool")
+                if(!is_ref && type == "char" || type == "bool" || type == "null")
                 {
-                    print_line("LDB", retval["R"], retval["M"]);
+                    print_line("LDB", retval["R"], retval["M"], format(";load_to_reg %s", Symid));
                 }
                 else
                 {
-                    print_line("LDR", retval["R"], retval["M"]);
+                    print_line("LDR", retval["R"], retval["M"], format(";load_to_reg %s", Symid));
                 }
             }
             else if ("H" in retval)
             {
-                enforce(false, "Unimplemented Heap");
+                string tmp1 = getRegister("tmp1");
+                print_line("MOV", tmp0, FP, format(";load_to_reg %s:%s", symbols.get(Symid).info["Value"], Symid));
+                print_line("ADI", tmp0, "-8", format(";%s = &&this",tmp0));
+                print_line("LDR", tmp1, tmp0, format(";%s = &this", tmp1));
+                print_line("ADI", tmp1, retval["H"], format(";%s = &this.%s", tmp1, Symid));
+                if(!is_ref && type == "char" || type == "bool" || type == "null")
+                {
+                    print_line("LDB", retval["R"], tmp1, ";load_to_reg");
+                }
+                else
+                {
+                    print_line("LDR", retval["R"], tmp1, ";load_to_reg");
+                }
+                //enforce(false, "Unimplemented Heap");
             }
             else
             {
-                enforce(false, "Can't find location");
+                enforce(false, format("load_to_reg failed: %s:%s", retval, symbols.get(Symid)));
+            }
+            if(is_ref)
+            {
+                enforce("S" in retval);
+                enforce("R" in retval);
+                enforce("H" !in retval);
+                enforce("M" !in retval);
+                debug(log8) stderr.writef("Location for value is in location %s\n%s\n", retval, symbol_to_register);
+                enforce(retval["RR"] != retval["R"]);
+                if(!is_ref && type == "char" || type == "bool" || type == "null")
+                {
+                    print_line("LDB", retval["R"], retval["RR"], ";load_to_reg: Register Indirect");
+                }
+                else
+                {
+                    print_line("LDR", retval["R"], retval["RR"], ";load_to_reg: Register Indirect");
+                }
+                //stderr.writef("%s\n", retval);
+                //enforce(false, "Unimplemented register indirect");
             }
         }
         return retval;
@@ -840,7 +1039,7 @@ class Tcode
         debug(log7) stderr.writef("FRAME %s\n", args);
         Symbol func_symbol = symbols.symIDsymbols.get(args[0], null);
         enforce(func_symbol !is null, "Non existant Symbol");
-        debug(log8) stderr.writef("%s\n", func_symbol);
+        debug(log8) stderr.writef("func_symbol %s\n", func_symbol);
         enforce(func_symbol.info.get("Kind", "") == "method", "Symbol is not a method");
         debug(log8) stderr.writef("Searching scope: %s\n", func_symbol.info.get("Scope", "UNKNOWN") ~ "." ~ func_symbol.info.get("Value", "UNKNOWN"));
         string func_scope = func_symbol.info.get("Scope", "UNKNOWN") ~ "." ~ func_symbol.info.get("Value", "UNKNOWN");
@@ -848,33 +1047,41 @@ class Tcode
         {
             debug(log8) stderr.writef("symbol %s\n", s);
         }
-        //        MOV     R3,     FP      ;Save FP in R3, this will be the PFP
-        print_line("MOV", "R3", "FP");
+        string tmp1 = getRegister("tmp1");
+        string tmp2 = getRegister("tmp2");
+        string tmp3 = getRegister("tmp3");
+        //MOV     R0,     FP      ;Save FP in R3, this will be the PFP
+        print_line("MOV", "R0", FP, ";Save FP, this will be the PFP");
         //        ADI     SP,     -4      ;Adjust Stack Pointer for Return Address
-        print_line("ADI", "SP", "-4");
+        print_line("ADI", "SP", "-4", ";Adjust Stack Pointer for Return Address");
         //        MOV     FP,     SP      ;Point at Current Activation Record     (FP = SP)       
-        print_line("MOV", "FP", "SP");
+        print_line("MOV", FP, "SP", ";Point at Current Activation Record     (FP = SP)");
+        FP = "R0";
         //        ADI     SP,     -4      ;Adjust Stack Pointer for PFP
-        print_line("ADI", "SP", "-4");
-        //        STR     R3,     SP      ;PFP to Top of Stack                    (PFP = FP)
-        print_line("STR", "R3", "SP");
-        //        ADI     SP,     symbol.data["Size"]
-        print_line("ADI", "SP", symbols.symIDsymbols[args[0]].data["Size"]);
-        //        MOV     R4,     SP      ;Check for Stack Overflow
-        print_line("MOV", "R4", "SP");
-        //        CMP     R4,     SL      ;
-        print_line("CMP", "R4", "SL");
-        //        BLT     R4,     OVERFL  ;
-        print_line("BLT", "R4", "EOP");
-        //        MOV     R1,     PC      ;PC incremented by 1 instruction
-        print_line("MOV", "R1", "PC");
-        //        ADI     R1,     32      ;Compute Return Address (always a fixed amount)
-        print_line("ADI", "R1", "32");
-        //        STR     R1,     FP      ;Return Address to the Beginning of the Frame
-        print_line("STR", "R1", "FP");
-        //        JMP     MAIN            ;Call Function MAIN
-        print_line("JMP", args[0], "");
-        //EOP     TRP     0
+        print_line("ADI", "SP", "-4", ";Adjust Stack Pointer for PFP");
+        //        STR     R0,     SP      ;PFP to Top of Stack                    (PFP = FP)
+        print_line("STR", FP, "SP", ";PFP to Top of Stack                    (PFP = FP)");
+        //        MOV     tmp1,     SP      ;Check for Stack Overflow
+        print_line("MOV", tmp1, "SP", ";Check for Stack Overflow");
+        //        CMP     tmp1,     SL      ;
+        print_line("CMP", tmp1, "SL", ";");
+        //        BLT     tmp1,     OVERFL  ;
+        print_line("BLT", tmp1, "EOP", ";Jump to End of program instead of Stack Overflow!");
+        if(args[1] == "this")
+        {
+            print_line("MOV", tmp2, FP, format(";Fetching \"this\""));
+            print_line("ADI", tmp2, "-8", format(";%s = &&this",tmp2));
+            print_line("LDR", tmp3, tmp2, format(";%s = &this", tmp3));
+            print_line("ADI", "SP", "-4", ";Allocating space for empty \"this\"");
+            print_line("STR", tmp3, "SP");
+        }
+        else
+        {
+            print_line("ADI", "SP", "-4", ";Allocating space for \"this\"");
+            q1 = load_to_reg(args[1]);
+            print_line("STR", q1["R"], "SP");
+        }
+        free_registers(false);
         //cur_label = "EOP";
         //print_line("TRP", "0", "");
         //;END of MAIN Activation Record
@@ -901,50 +1108,252 @@ class Tcode
 
     }
 
+    void do_MOVI(string[] args)
+    {
+        debug(log7)stderr.writef("MOVI %s %s <- %s\n", args, q1, q2);
+        string tmpR1 = getRegister("tmpR1");
+        q1 = load_to_reg(args[0]);
+        print_line("SUB", tmpR1, tmpR1, ";MOVI");
+        print_line("ADI", tmpR1, args[1], ";MOVI");
+        print_line("MOV", q1["R"], tmpR1);
+    }
+
     void do_MOV(string[] args)
     {
+        enforce(!args[0].empty && !args[1].empty);
+        debug(log7)stderr.writef("MOV %s %s <- %s\n", args, q1, q2);
         q1 = load_to_reg(args[0]);
         q2 = load_to_reg(args[1]);
-        debug(log7)stderr.writef("MOV %s %s <- %s\n", args, q1, q2);
-        debug(log8)stderr.writef("MOV %s %s <- %s\n", args, q1["R"], q2["R"]);
         print_line("MOV", q1["R"], q2["R"]);
     }
     
+    void do_AND(string[] args)
+    {
+        debug(log7) stderr.writef("AND %s\n", args);
+        // IC: AND A, B, C ; A && B  C
+        // TC: MOV Rc, Ra
+        //     AND Rc, Rb
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[0]);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("AND", result_register, q2["R"]);
+    }
+    void do_OR(string[] args)
+    {
+        debug(log7) stderr.writef("OR %s\n", args);
+        // IC: OR  A, B, C ; A || B  C
+        // TC: MOV Rc, Ra
+        //     OR  Rc, Rb
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[0]);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("OR", result_register, q2["R"]);
+    }
     void do_BF(string[] args)
     {
+        debug(log7)stderr.writef("BF %s if(%s == 0) JMP %s\n", args, args[0], args[1]);
         q1 = load_to_reg(args[0]);
-        debug(log7)stderr.writef("BF %s if(%s < 0) JMP %s\n", args, args[0], args[1]);
-        print_line("BLT", q1["R"], args[1]);
+        print_line("BRZ", q1["R"], args[1]);
+        free_registers(false);
+    }
+    
+    void do_EQ(string[] args)
+    {
+        debug(log7)stderr.writef("EQ %s %s < %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("EQ %s %s < %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        string lhs;
+        string rhs;
+        //if("RR" in q1)
+        //    lhs = q1["RR"];
+        //else
+            lhs = q1["R"];
+        //if("RR" in q2)
+        //    rhs = q2["RR"];
+        //else
+            rhs = q2["R"];
+        //IC: EQ  A, B, C ; A < B -> C
+        //TC:     MOV Rc, Ra
+        //        CMP Rc, Rb
+        //        BRZ Rc, L3  ; A < B GOTO L3
+        //        MOV Rc, R0  ; Set FALSE
+        //        JMP L4
+        //    L3: MOV Rc, R1  ; Set TRUE
+        //    L4:             ; Next Statement
+        string L3 = gen_label("EQ");
+        string L4 = gen_label("EQ");
+        print_line("MOV", result_register, lhs);
+        print_line("CMP", result_register, rhs);
+        print_line("BRZ", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
+    }
+    
+    void do_NE(string[] args)
+    {
+        debug(log7)stderr.writef("NE %s %s < %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("NE %s %s < %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        //IC: NE  A, B, C ; A < B -> C
+        //TC:     MOV Rc, Ra
+        //        CMP Rc, Rb
+        //        BNZ Rc, L3  ; A < B GOTO L3
+        //        MOV Rc, R0  ; Set FALSE
+        //        JMP L4
+        //    L3: MOV Rc, R1  ; Set TRUE
+        //    L4:             ; Next Statement
+        string L3 = gen_label("NE");
+        string L4 = gen_label("NE");
+        print_line("MOV", result_register, q1["R"]);
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BNZ", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
     }
     
     void do_LT(string[] args)
     {
-        q1 = load_to_reg(args[0]);
-        q2 = load_to_reg(args[1]);
         debug(log7)stderr.writef("LT %s %s < %s -> %s\n", args, q1, q2, result_register);
         debug(log8)stderr.writef("LT %s %s < %s -> %s\n", args, q1["R"], q2["R"], result_register);
-        // 3 < 2 -> -1 ( 2 - 3 ) (q2 - q1)
-        print_line("MOV", result_register, q2["R"]);
-        print_line("CMP", result_register, q1["R"]);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        //IC: LT  A, B, C ; A < B -> C
+        //TC:     MOV Rc, Ra
+        //        CMP Rc, Rb
+        //        BLT Rc, L3  ; A < B GOTO L3
+        //        MOV Rc, R0  ; Set FALSE
+        //        JMP L4
+        //    L3: MOV Rc, R1  ; Set TRUE
+        //    L4:             ; Next Statement
+        string L3 = gen_label("LT");
+        string L4 = gen_label("LT");
+        print_line("MOV", result_register, q1["R"], ";Start LT");
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BLT", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
     }
     
     void do_GT(string[] args)
     {
-        q1 = load_to_reg(args[0]);
-        q2 = load_to_reg(args[1]);
         debug(log7)stderr.writef("LT %s %s > %s -> %s\n", args, q1, q2, result_register);
         debug(log8)stderr.writef("LT %s %s > %s -> %s\n", args, q1["R"], q2["R"], result_register);
-        // 3 < 2 -> -1 ( 2 - 3 ) (q2 - q1)
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+
+        //IC:  GT  A, B, C ; A > B  C
+        //TC:     MOV Rc, Ra
+        //        CMP Rc, Rb
+        //        BGT Rc, L3  ; A > B GOTO L3
+        //        MOV Rc, R0  ; Set FALSE
+        //        JMP L4
+        //    L3: MOV Rc, R1  ; Set TRUE
+        //    L4:             ; Next Statement
+        string L3 = gen_label("GT");
+        string L4 = gen_label("GT");
         print_line("MOV", result_register, q1["R"]);
         print_line("CMP", result_register, q2["R"]);
+        print_line("BGT", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
+    }
+    
+    void do_GE(string[] args)
+    {
+        debug(log7)stderr.writef("LT %s %s > %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("LT %s %s > %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        // IC: GE  A, B, C ; A >= B -> C
+        // TC:     MOV Rc, Ra  ; Test A > B
+        //         CMP Rc, Rb
+        //         BGT Rc, L3  ; A > B GOTO L3
+        //         MOV Rc, Ra  ; Test A == B
+        //         CMP Rc, Rb
+        //         BRZ Rc, L3  ; A == B GOTO L3
+        //         MOV Rc, R0  ; Set FALSE
+        //         JMP L4
+        //     L3: MOV Rc, R1  ; Set TRUE
+        //     L4:     
+        string L3 = gen_label("GE");
+        string L4 = gen_label("GE");
+        print_line("MOV", result_register, q1["R"]);
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BGT", result_register, L3);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BRZ", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
+    }
+    
+    void do_LE(string[] args)
+    {
+        debug(log7)stderr.writef("LT %s %s > %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("LT %s %s > %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        // IC: LE  A, B, C ; A <= B -> C
+        // TC:     MOV Rc, Ra  ; Test A > B
+        //         CMP Rc, Rb
+        //         BLT Rc, L3  ; A < B GOTO L3
+        //         MOV Rc, Ra  ; Test A == B
+        //         CMP Rc, Rb
+        //         BRZ Rc, L3  ; A == B GOTO L3
+        //         MOV Rc, R0  ; Set FALSE
+        //         JMP L4
+        //     L3: MOV Rc, R1  ; Set TRUE
+        //     L4:     
+        string L3 = gen_label("LE");
+        string L4 = gen_label("LE");
+        print_line("MOV", result_register, q1["R"]);
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BLT", result_register, L3);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("CMP", result_register, q2["R"]);
+        print_line("BRZ", result_register, L3);
+        print_line("SUB", result_register, result_register);
+        print_line("JMP", L4, "");
+        cur_label = L3;
+        print_line("SUB", result_register, result_register);
+        print_line("ADI", result_register, "1");
+        cur_label = L4;
     }
     
     void do_WRITE(string[] args)
     {
-        stderr.writef("WRITE %s\n", args);
+        debug(log7)stderr.writef("WRITE %s\n", args);
+        enforce(!args[0].empty);
         q1 = load_to_reg(args[0]);
-        print_line("MOV", "R0", q1["R"]);
-        string type = symbols.symIDsymbols[args[0]].data["Type"];
+        string src;
+        string type = symbols.get(args[0]).data["Type"];
+        //if(args[0][0] == '*')
+        //    src = q1["RR"];
+        //else
+            src = q1["R"];
+        print_line("MOV", "R0", src);
         if(type == "char")
         {
             print_line("TRP", "3", "");
@@ -955,42 +1364,170 @@ class Tcode
         }
         else
         {
-            enforce(false, "Unprintable type");
+            print_line("TRP", "1", "");
+            //enforce(false, "Unprintable type: [" ~ type ~ "," ~ args[0]);
         }
+        free_registers(false);
+    }
+
+    void do_READ(string[] args)
+    {
+        debug(log7)stderr.writef("READ %s\n", args);
+        enforce(!args[0].empty);
+        q1 = load_to_reg(args[0]);
+        string dest;
+        string type = symbols.get(args[0]).data["Type"];
+        //if(args[0][0] == '*')
+        //    dest = q1["RR"];
+        //else
+            dest = q1["R"];
+        if(type == "char")
+        {
+            print_line("TRP", "4", "");
+        }
+        else if (type == "int")
+        {
+            print_line("TRP", "2", "");
+        }
+        else
+        {
+            enforce(false, "Unreadable type: " ~ type ~ "," ~ args[0]);
+        }
+        print_line("MOV", dest, "R0");
     }
     
     void do_JMP(string[] args)
     {
-        stderr.writef("JMP %s\n", args);
+        debug(log7)stderr.writef("JMP %s\n", args);
+        print_line("JMP", args[0], "");
     }
     
     void do_RTN(string[] args)
     {
-        stderr.writef("RTN %s\n", args);
+        debug(log7)stderr.writef("RTN %s\n", args);
         free_registers();
-        // ;Return from MAIN
-        //         MOV     SP,     FP
-        print_line("MOV", "SP", "FP");
-        //         ADI     SP,     4       ;De-allocate FP
-        print_line("ADI", "SP", "4");
-        //         LDR     R4,     FP      ;Keep a copy of FP to jump to
-        print_line("LDR", "R4", "FP");
-        //         MOV     R6,     FP      ;Grab another copy of FP
-        print_line("MOV", "R6", "FP");
-        //         ADI     R6,     -4      ;Move the pointer to PFP
-        print_line("ADI", "R6", "-4");
-        //         LDR     FP,     R6      ;Store PFP in FP
-        print_line("LDR", "FP", "R6");
-        //         JMR     R4              ;Return
-        print_line("JMR", "R4", "");
-        // ;END of MAIN
-
+        string tmpR1 = getRegister("tmp1");
+        string tmpR2 = getRegister("tmp2");
+        string tmpR3 = getRegister("tmp3");
+        print_line("MOV", "SP", FP, ";De-allocate Frame");
+        print_line("ADI", "SP", "4", ";De-allocate FP");
+        print_line("LDR", tmpR1, FP, ";Keep a copy of FP to jump to");
+        print_line("MOV", tmpR2, FP, ";Grab another copy of FP");
+        print_line("ADI", tmpR2, "-4", ";Move the pointer to PFP");
+            print_line("ADI", tmpR2, "-4", ";Store Return value");
+            print_line("LDR", tmpR3, tmpR2, ";Store Return value");
+            print_line("STR", tmpR3, FP, ";Store Return value");
+            print_line("ADI", tmpR2, "+4", ";Store Return value");
+        free_registers(false);
+        print_line("LDR", FP, tmpR2, ";Store PFP in FP");
+        print_line("JMR", tmpR1, "", ";Return");
     }
 
+    void do_RETURN(string[] args)
+    {
+        debug(log7)stderr.writef("RETURN %s\n", args);
+        free_registers();
+        q1 = load_to_reg(args[0]);
+        string tmpR1 = getRegister("tmp1");
+        string tmpR2 = getRegister("tmp2");
+        print_line("MOV", "SP", FP, ";De-allocate Frame");
+        print_line("ADI", "SP", "4", ";De-allocate FP");
+        print_line("LDR", tmpR1, FP, ";Keep a copy of FP to jump to");
+        print_line("MOV", tmpR2, FP, ";Grab another copy of FP");
+        print_line("ADI", tmpR2, "-4", ";Move the pointer to PFP");
+        string type = symbols.get(args[0]).data["Type"];
+        if(type == "char" || type == "bool" || type == "null")
+        {
+            print_line("STB", q1["R"], FP, ";Store Return value");
+        }
+        else
+        {
+            print_line("STR", q1["R"], FP, ";Store Return value");
+        }
+        free_registers(false);
+        print_line("LDR", FP, tmpR2, ";Store PFP in FP");
+        print_line("JMR", tmpR1, "", ";Return");
+    }
+
+    void do_PUSH(string[] args)
+    {
+        debug(log7) stderr.writef("PUSH %s\n", args);
+        q1 = load_to_reg(args[0]);
+        string src;
+        //if("RR" in q1)
+        //    src = q1["RR"];
+        //else
+            src = q1["R"];
+        //enforce(false, "Unimplemented PUSH");
+        // IC: PUSH A       ; Push A on Stack
+        // TC: STR Ra, (SP) ; Push A on Stack; A in Ra
+        //     ADI SP, #-4  ; Modify Stack Pointer
+        print_line("ADI", "SP", "-4");
+        print_line("STR", src, "SP");
+        free_registers(false);
+    }
+
+    void do_POP(string[] args)
+    {
+        debug(log7) stderr.writef("POP %s\n", args);
+        enforce(false, "Unimplemented POP");
+        q1 = load_to_reg(args[0]);
+        // IC: POP A        ; Pop the top of the Stack into A
+        // TC: ADI SP, #4   ; Modify Stack Pointer
+        //     LDR Ra, (SP) ; Pop the Stack
+        print_line("ADI", "SP", "+4");
+        print_line("LDR", q1["R"], "SP");
+    }
+
+    void do_PEEK(string[] args)
+    {
+        debug(log7) stderr.writef("PEEK %s\n", args);
+        q1 = load_to_reg(args[0]);
+        string tmpR1 = getRegister("tmp1");
+        //          MOV     tmpR1,     SP      ;Get Stack Pointer, should be 4 away from the retval of FACT
+        print_line("MOV", tmpR1, "SP");
+        //          ADI     tmpR1,     -4      ;Adjust to be pointing at the Return Value (I'm expecting an INT)
+        print_line("ADI", tmpR1, "-4");
+        string type = symbols.get(args[0]).data["Type"];
+        if(type == "char" || type == "bool" || type == "null")
+        {
+            // LDR     R2,     tmpR1      ;R[2] = return value of FACT
+            print_line("LDB", q1["R"], tmpR1);
+        }
+        else
+        {
+            // LDB     R2,     tmpR1      ;R[2] = return value of FACT
+            print_line("LDR", q1["R"], tmpR1);
+        }
+    }
+    
+    void do_CALL(string[] args)
+    {
+        debug(log7) stderr.writef("CALL %s\n", args);
+        FP = "FP";
+        //        ADI     SP,     symbol.data["Size"]
+        print_line("ADI", "SP", format("-%s", symbols.size_of(args[0])), format(";Func %s", symbols.get(args[0]).info["Value"]));
+        //        MOV     R1,     PC      ;PC incremented by 1 instruction
+        print_line("MOV", "R1", "PC", ";CALL : PC incremented by 1 instruction");
+        //        ADI     R1,     32      ;Compute Return Address (always a fixed amount)
+        print_line("ADI", "R1", "32", ";Compute Return Address (always a fixed amount)");
+        //        STR     R1,     FP      ;Return Address to the Beginning of the Frame
+        print_line("STR", "R1", FP, ";Return Address to the Beginning of the Frame");
+        //        JMP     MAIN            ;Call Function MAIN
+        print_line("JMP", args[0], "", ";Call Function");
+        //EOP     TRP     0
+    }
+    
     void do_EOP(string[] args)
     {
-        stderr.writef("EOP %s\n", args);
+        debug(log7) stderr.writef("EOP %s\n", args);
         print_line("TRP", "0", "");
+    }
+
+    void do_NOP(string[] args)
+    {
+        debug(log7) stderr.writef("NOP %s\n", args);
+        print_line("SUB", "R0", "R0");
     }
     
     void do_ADD(string[] args)
@@ -1013,14 +1550,74 @@ class Tcode
         print_line("SUB", result_register, q2["R"]);
     }
     
-    void do_CALL(string[] args)
+    void do_MUL(string[] args)
     {
-        stderr.writef("CALL %s\n", args);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        debug(log7)stderr.writef("MUL %s %s + %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("MUL %s %s + %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("MUL", result_register, q2["R"]);
     }
     
-    void do_PEEK(string[] args)
+    void do_DIV(string[] args)
     {
-        stderr.writef("PEEK %s\n", args);
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        debug(log7)stderr.writef("DIV %s %s + %s -> %s\n", args, q1, q2, result_register);
+        debug(log8)stderr.writef("DIV %s %s + %s -> %s\n", args, q1["R"], q2["R"], result_register);
+        print_line("MOV", result_register, q1["R"]);
+        print_line("DIV", result_register, q2["R"]);
+    }
+    
+    void do_NEW(string[] args)
+    {
+        q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        debug(log7)stderr.writef("NEW %s %s + %s -> %s\n", args, q1, q2, result_register);
+        //stderr.writef("%s%s\n", symbols.symIDsymbols[args[0]], symbols.symIDsymbols[args[1]]);
+        // IC:  NEW B, A    ; Allocate the number of bytes in
+        //                  ; variable B on the heap and
+        //                  ; place the starting address in A
+        // TC:  LDR Rc, FREE (I already have SL loaded)
+        //      MOV Ra, Rc
+        print_line("MOV", q2["R"], "SL", ";Store Heap pointer");
+        //      ADD Rc, Rb  ; Inc free heap by Rb bytes
+        //      STR Rc, FREE
+        print_line("ADD", "SL", q1["R"], ";Allocate Heap Space");
+    }
+
+    void do_NEWI(string[] args)
+    {
+        //q1 = load_to_reg(args[0]);
+        q2 = load_to_reg(args[1]);
+        debug(log7)stderr.writef("NEWI %s %s -> %s\n", args, args[0], q2);
+        //stderr.writef("%s%s\n", symbols.symIDsymbols[args[0]], symbols.symIDsymbols[args[1]]);
+        // IC: NEWI #, A        ; Allocate # bytes on the heap and 
+        //                      ; place the starting address in A
+        // TC: LDR Rc, FREE     ; Load address of free heap
+        //     MOV Ra, Rc       ; Save address in register Ra
+        print_line("MOV", q2["R"], "SL", ";Store Heap pointer");
+        //     ADI Rc, #        ; Inc free heap by # bytes
+        //     STR Rc, FREE     ; Update FREE
+        print_line("ADI", "SL", args[0], ";Allocate Heap Pointer Space");
+        //enforce(false);
+    }
+    void do_REF(string[] args)
+    {
+        debug(log7)stderr.writef("REF %s\n", args);
+        q1 = load_to_reg(args[0]);
+        //q2 = load_to_reg(args[1]);
+        // IC: REF A, B, C ; Using A as a Base Address add to
+        //                 ; it the offset to B and assign
+        //                 ; the address to C. 
+        // TC: MOV Rc, Ra
+        //     ADD Rc, Rb
+        string[string] loc1 = getLocation(args[1]);
+        print_line("MOV", result_register, q1["R"], format(";REF %s", args));
+        print_line("ADI", result_register, loc1["H"]);
+        //stderr.writef("REF: %s\n", symbols.get(args[2]));
+        //enforce(false);
     }
     
 }
@@ -1043,30 +1640,33 @@ private:
     {
         string[4][] data;
         string[size_t] labels;
+
         void add(string[4] new_data, int line = __LINE__)
         {
             debug(log5){ 
                 string[] print_data = [new_data[0]];
                 foreach(symid; new_data[1..$])
                 {
-                    if(Symbol symbol = symbols.get(symid))
+                    if(!symid.empty)
                     {
-                        if(symbol.info.get("Reference", "") != "")
-                        {
-                            print_data ~= "(" ~ symbol.info["Value"] ~ ")";
-                        }
-                        else
+                        if(Symbol symbol = symbols.get(symid))
                         {
                             print_data ~= symbol.info["Value"];
                         }
-                    }
-                    else if(symid == "")
-                    {
-                        print_data ~= "";
-                    }
-                    else
-                    {
-                        print_data ~= "*" ~ symid ~ "*";
+                        else if(Symbol symbol = symbols.get(symid[1..$]))
+                        {
+                            enforce(symid[0] == '*');
+                            print_data ~= "*" ~ symbol.info["Value"];
+                            enforce(false, "I think this isn't used anymore.");
+                        }
+                        else if(symid == "")
+                        {
+                            print_data ~= "";
+                        }
+                        else
+                        {
+                            print_data ~= "*" ~ symid ~ "*";
+                        }
                     }
                 }
                 debug(Tokenizer)
@@ -1080,6 +1680,7 @@ private:
             }
             data ~= new_data;
         }
+
         void set_label(string new_label, int line = __LINE__)
         {
             debug(log5)
@@ -1093,16 +1694,17 @@ private:
             else
             {
                 debug(log5) stderr.writef("Backpatching %s -> %s\n", labels[data.length], new_label);
-                foreach(r; 0..data.length)
-                {
-                    foreach(c; 1..4)
-                    {
-                        if(data[r][c] == labels[data.length])
-                        {
-                            data[r][c] = new_label;
-                        }
-                    }
-                }
+                add(["NOP", "", "", ""]);
+                //foreach(r; 0..data.length)
+                //{
+                //    foreach(c; 1..4)
+                //    {
+                //        if(data[r][c] == labels[data.length])
+                //        {
+                //            data[r][c] = new_label;
+                //        }
+                //    }
+                //}
                 labels[data.length] = new_label;
             }
         }
@@ -1158,6 +1760,21 @@ private:
             operations["!="]    = &_op_ne;
             operations["&&"]    = &_op_and;
             operations["||"]    = &_op_or;
+        }
+
+        string ref_check(string Symid)
+        {
+            Symbol symbol = symbols.get(Symid);
+            //stderr.writef("ref_check: %s\n", symbol);
+            if(symbol !is null)
+            {
+                if(symbol.data.get("Ref", null) !is null)
+                {
+                    Symid = "*" ~ Symid;
+                }
+            }
+            //stderr.writef("ref_check: returning %s\n", Symid);
+            return Symid;
         }
     
         // tExist: pop identifier
@@ -1243,6 +1860,35 @@ private:
                 {
                     test_sar.type = member_symbol.data.get("returnType", "UNKNOWN type");
                     test_sar.Symid = member_symbol.info.get("Symid", "UNKNOWN Symid");
+                    string[] param_Symids;
+                    enforce(!SAS.empty, "Func is a reference, but SAS is empty!");
+                    debug(log4) stderr.writef("Need to get the reference from the stack, then resolve to get function signature.");
+                    debug(log4) stderr.writef("%s\n", test_sar.identifier);
+                    debug(log4) stderr.writef("%s\n", which_sar(SAS.top!(id_sar)));
+                    //var_sar ref_sar = SAS.top!(var_sar);
+                    debug(log4) stderr.writef("Got reference symbol: %s\n", reference_symbol);
+                    debug(log4) stderr.writef("Need to get signature for %s.%s.%s\n", "g", reference_symbol.data["Type"], test_sar.identifier);
+                    debug(log4) stderr.writef("Got func symbol: %s\n", symbols.find(test_sar.identifier, format("%s.%s", "g", reference_symbol.data["Type"])));
+                    debug(log4) stderr.writef("Got func params: %s\n", std.string.split(symbols.find(test_sar.identifier, format("%s.%s", "g", reference_symbol.data["Type"])).data.get("Param", ""), "|"));
+                    param_Symids = std.string.split(symbols.find(test_sar.identifier, format("%s.%s", "g", reference_symbol.data["Type"])).data.get("Param", ""), "|");
+                    //Duplicate this to else 
+                    //enforce(param_Symids.length == test_sar.args.list.length, "Argument list lengths are wrong");
+                    if(param_Symids.length != test_sar.args.list.length)
+                    {
+                        gen_error(func, format("Argument list lengths don't match: Expected %d, got %d", param_Symids.length, test_sar.args.list.length));
+                        enforce(false, "Continuing from this point is pointless");
+                    }
+                    debug(log4) stderr.writef("Need to compare these:\n");
+                    foreach(i; 0..test_sar.args.list.length)
+                    {
+                        debug(log4) stderr.writef("%s == %s\n", symbols.get(test_sar.args.list[i].Symid).data["Type"], symbols.get(param_Symids[i]).data["Type"]);
+                        if(symbols.get(test_sar.args.list[i].Symid).data["Type"] != symbols.get(param_Symids[i]).data["Type"])
+                        {
+                            gen_error(func, format("Type mismatch in function signature: Got type \"%s\" in the call when function declaration is expecting a \"%s\"", symbols.get(test_sar.args.list[i].Symid).data["Type"], symbols.get(param_Symids[i]).data["Type"]));
+                        }
+                        //enforce(symbols.get(test_sar.args.list[i].Symid).data["Type"] == symbols.get(param_Symids[i]).data["Type"], "Type mismatch in function signature");
+                    }
+                    debug(log4) stderr.writef("\n");
                     member_sar = test_sar;
                 }
                 else
@@ -1296,12 +1942,12 @@ private:
                     {
                         Symbol return_value_symbol = symbols.gen_tmp(_scope, test_sar.type);
                         Symbol func_symbol = symbols.symIDsymbols[test_sar.Symid];
-                        debug(log6) stderr.writef("Looking for size of %s[%d]\n", test_sar.Symid, symbols.size_of(test_sar.Symid));
-                        func_symbol.data["Size"] = format("%s", symbols.size_of(test_sar.Symid));
+                        //debug(log6) stderr.writef("Looking for size of %s[%d]\n", test_sar.Symid, symbols.size_of(test_sar.Symid));
+                        //func_symbol.data["Size"] = format("%s", symbols.size_of(test_sar.Symid));
                         icode.add(["FRAME", test_sar.Symid, reference_sar.Symid, ""]);
                         foreach(l; test_sar.args.list)
                         {
-                            icode.add(["PUSH", l.Symid, "", ""]);
+                            icode.add(["PUSH", ref_check(l.Symid), "", ""]);
                         }
                         icode.add(["CALL", test_sar.Symid, "", ""]);
                         icode.add(["PEEK", return_value_symbol.info["Symid"], "", ""]);
@@ -1314,7 +1960,7 @@ private:
                     else if(var_sar test_sar = cast(var_sar)(member_sar))
                     {
                         Symbol ref_symbol = symbols.gen_tmp(_scope, test_sar.type);
-                        //ref_symbol.info["Reference"] = test_sar.type;
+                        ref_symbol.data["Ref"] = test_sar.type;
                         icode.add(["REF", reference_sar.Symid, test_sar.Symid, ref_symbol.info["Symid"]]);
                         //stderr.writef("%s\n", ref_symbol);
                         //SAS.push(new ref_sar(cast(var_sar)reference_sar, cast(var_sar)member_sar));
@@ -1348,12 +1994,35 @@ private:
                     gen_error(func, format("Unknown function [%s.%s]\n", _scope.join("."), test_sar.identifier));
                 test_sar.type = func_symbol.data.get("Type", "UNKNOWN type");
                 test_sar.Symid = func_symbol.info.get("Symid", "UNKNOWN Symid");
+                string[] param_Symids;
+                debug(log4) stderr.writef("Need to use the scope to find the function signature: ");
+                debug(log4) stderr.writef("%s.%s\n", _scope.join("."), test_sar.identifier);
+                debug(log4) stderr.writef("Got func symbol: %s\n", symbols.find(test_sar.identifier, _scope));
+                debug(log4) stderr.writef("Got func params: %s\n", std.string.split(symbols.find(test_sar.identifier, _scope).data.get("Param", ""), "|"));
+                param_Symids = std.string.split(symbols.find(test_sar.identifier, _scope).data.get("Param", ""), "|");
+                //enforce(param_Symids.length == args.list.length, "Argument list lengths are wrong");
+                if(param_Symids.length != test_sar.args.list.length)
+                {
+                    gen_error(func, format("Argument list lengths don't match: Expected %d, got %d", param_Symids.length, test_sar.args.list.length));
+                    enforce(false, "Continuing from this point is pointless");
+                }
+                debug(log4) stderr.writef("Need to compare these:\n");
+                foreach(i; 0..test_sar.args.list.length)
+                {
+                    debug(log4) stderr.writef("%s == %s\n", symbols.get(test_sar.args.list[i].Symid).data["Type"], symbols.get(param_Symids[i]).data["Type"]);
+                    if(symbols.get(test_sar.args.list[i].Symid).data["Type"] != symbols.get(param_Symids[i]).data["Type"])
+                    {
+                        gen_error(func, format("Type mismatch in function signature: Got type \"%s\" in the call when function declaration is expecting a \"%s\"", symbols.get(test_sar.args.list[i].Symid).data["Type"], symbols.get(param_Symids[i]).data["Type"]));
+                    }
+                    //enforce(symbols.get(test_sar.args.list[i].Symid).data["Type"] == symbols.get(param_Symids[i]).data["Type"], "Type mismatch in function signature");
+                }
+                debug(log4) stderr.writef("\n");
                 Symbol return_value_symbol = symbols.gen_tmp(_scope, test_sar.type);
-                stderr.writef("Looking for size of %s[%d]\n", test_sar.Symid, symbols.size_of(test_sar.Symid));
+                //stderr.writef("Looking for size of %s[%d]\n", test_sar.Symid, symbols.size_of(test_sar.Symid));
                 icode.add(["FRAME", test_sar.Symid, "this", ""]);
                 foreach(l; test_sar.args.list)
                 {
-                    icode.add(["PUSH", l.Symid, "", ""]);
+                    icode.add(["PUSH", ref_check(l.Symid), "", ""]);
                 }
                 icode.add(["CALL", test_sar.Symid, "", ""]);
                 icode.add(["PEEK", return_value_symbol.info["Symid"], "", ""]);
@@ -1365,14 +2034,15 @@ private:
                 debug(log4) stderr.writef("iExist called and got a arr_sar [%s[%s]]. Stuffing it back onto the SAS as is\n", test_sar.identifier, test_sar.index.identifier);
                 Symbol offset_symbol = symbols.gen_tmp(_scope, "int");
                 Symbol new_symbol = symbols.gen_tmp(_scope, test_sar.type[1..$]);
+                new_symbol.data["Ref"] = test_sar.type[1..$];
                 //new_symbol.set_info(["Reference":test_sar.type]);
-                // TODO: Indicate that new_symbol's value is a memory address.
                 //stderr.writef("[%d] Created new temp variable: %s %s\n", tokenizer.ct.line, offset_symbol.data["Type"], offset_symbol.info["Value"]);
                 //stderr.writef("[%d] Created new temp variable: %s %s\n", tokenizer.ct.line, new_symbol.data["Type"], new_symbol.info["Value"]);
                 //icode.add(["MUL", test_sar.index.Symid, "GETSIZE", offset_symbol.info["Symid"]]);
                 Symbol size_symbol = symbols.add_global("int", format("GI+%d", symbols.size_of(test_sar.Symid)));
                 icode.add(["MUL", test_sar.index.Symid, size_symbol.info["Symid"], offset_symbol.info["Symid"]]);
                 icode.add(["ADD", test_sar.Symid, offset_symbol.info["Symid"], new_symbol.info["Symid"]]);
+                //stderr.writef("Pushing a var_sar onto the stack: %s, %s, %s, %s\n", new_symbol, new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]);
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
             }
             else if(id_sar test_sar = cast(id_sar)top_sar)
@@ -1637,22 +2307,17 @@ private:
         {
             string func = "_return";
             debug(log2) log(func , format("Scope[%s], Token [%s]", _scope.join("."), tokenizer.ct));
-            if(tokenizer.ct.lexeme == ";")
+            var_sar val = SAS.top!(var_sar)();
+            if(val is null)
+                gen_error(func, format("Expected a var_sar, but got something else: ", val.identifier, which_sar(val)));
+            SAS.pop();
+            if(val.type == "null")
             {
                 icode.add(["RTN", "", "", ""]);
             }
             else
             {
-                var_sar val = SAS.top!(var_sar)();
-                if(val !is null)
-                {
-                    icode.add(["RETURN", val.Symid, "", ""]);
-                }
-                else
-                {
-                    gen_error(func, format("Expected a var_sar, but got something else: ", val.identifier, which_sar(val)));
-                }
-                SAS.pop();
+                icode.add(["RETURN", val.Symid, "", ""]);
             }
         }
 
@@ -1665,7 +2330,8 @@ private:
             var_sar val = SAS.top!(var_sar)();
             if(val !is null)
             {
-                icode.add(["WRITE", val.Symid, "", ""]);
+                //stderr.writef("_cout: %s\n", symbols.get(val.Symid));
+                icode.add(["WRITE", ref_check(val.Symid), "", ""]);
             }
             else
             {
@@ -1683,7 +2349,7 @@ private:
             var_sar val = SAS.top!(var_sar)();
             if(val !is null)
             {
-                icode.add(["READ", val.Symid, "", ""]);
+                icode.add(["READ", ref_check(val.Symid), "", ""]);
             }
             else
             {
@@ -1729,11 +2395,11 @@ private:
         {
             string func = "func";
             debug(log2) log(func , format("Scope[%s], Token [%s]", _scope.join("."), tokenizer.ct));
-            argument_list_sar top_sar = SAS.top!(argument_list_sar)();
+            argument_list_sar args = SAS.top!(argument_list_sar)();
             SAS.pop();
-            id_sar next_sar = SAS.top!(id_sar)();
+            id_sar func_name = SAS.top!(id_sar)();
             SAS.pop();
-            SAS.push(new func_sar(new var_sar(next_sar, "", ""), top_sar));
+            SAS.push(new func_sar(new var_sar(func_name, "", ""), args));
         }
 
         // arr: pop expression and identifier and another identifier
@@ -1779,14 +2445,15 @@ private:
             //new_symbol.set_info(["Reference":type.identifier]);
             //stderr.writef("%s\n", new_symbol);
             //icode.add(["NEWI", "GETSIZE", ref_symbol.info["Symid"], ""]);
-            Symbol size_symbol = symbols.add_global("int", format("GI+%d", symbols.size_of(new_symbol.info["Symid"])));
-            icode.add(["NEWI", size_symbol.info["Symid"], size_symbol.info["Symid"], ""]);
-            // TODO: Find a better way to get the Constructor symbol
+            //Symbol size_symbol = symbols.add_global("int", format("GI+%d", symbols.size_of(new_symbol.info["Symid"])));
+            //icode.add(["NEWI", "+64", new_symbol.info["Symid"], ""]);
+            // TODO: Calling NEWI here is probably not correct....
+            icode.add(["NEWI", format("%s", symbols.size_of(new_symbol.info["Symid"])), new_symbol.info["Symid"], ""]);
             Symbol constructor_symbol = symbols.find(new_symbol.data["Type"], "g." ~ new_symbol.data["Type"]);
             icode.add(["FRAME", constructor_symbol.info["Symid"], new_symbol.info["Symid"], ""]);
             foreach(l; argument_list.list)
             {
-                icode.add(["PUSH", l.Symid, "", ""]);
+                icode.add(["PUSH", ref_check(l.Symid), "", ""]);
             }
             icode.add(["CALL", constructor_symbol.info["Symid"], "", ""]);
             icode.add(["PEEK", new_symbol.info["Symid"], "", ""]);
@@ -1879,7 +2546,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, left.type);
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["MUL", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["MUL", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -1903,7 +2570,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, left.type);
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["DIV", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["DIV", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -1927,7 +2594,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, left.type);
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["ADD", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["ADD", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -1951,7 +2618,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, left.type);
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["SUB", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["SUB", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -1981,14 +2648,14 @@ private:
                     {
                         debug(log4) stderr.writef("good\n");
                         // TODO: Does this need fixing? Move a type to a variable?
-                        icode.add(["MOV", right.identifier, left.Symid, ""]);
+                        icode.add(["MOV", left.Symid, right.identifier, ""]);
                     }
                     else if(arr_sar test_left = cast(arr_sar)(left))
                     {
                         if(test_left.type == "@" ~ test_right.identifier)
                         {
                             debug(log4) stderr.writef("good\n");
-                            icode.add(["MOV", right.identifier, left.Symid, ""]);
+                            icode.add(["MOV", left.Symid, "*" ~ right.identifier, ""]);
                         }
                         else
                         {
@@ -2005,14 +2672,14 @@ private:
                     if(left.type == test_right.type)
                     {
                         debug(log4) stderr.writef("good\n");
-                        icode.add(["MOV", test_right.Symid, left.Symid, ""]);
+                        icode.add(["MOV", ref_check(left.Symid), ref_check(test_right.Symid), ""]);
                     }
                     else if(arr_sar test_left = cast(arr_sar)(left))
                     {
                         if(test_left.type == "@" ~ test_right.identifier)
                         {
                             debug(log4) stderr.writef("good\n");
-                            icode.add(["MOV", test_right.Symid, left.Symid, ""]);
+                            icode.add(["MOV", left.Symid, "*" ~ test_right.Symid, ""]);
                         }
                         else
                         {
@@ -2021,7 +2688,7 @@ private:
                     }
                     else if(test_right.type == "null")
                     {
-                        icode.add(["MOV", test_right.Symid, left.Symid, ""]);
+                        icode.add(["MOVI", left.Symid, "0", ""]);
                     }
                     else
                     {
@@ -2053,7 +2720,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["LE", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["LE", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2078,7 +2745,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["GE", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["GE", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2103,7 +2770,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["LT", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["LT", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2128,7 +2795,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["GT", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["GT", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2159,7 +2826,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["EQ", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["EQ", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2176,7 +2843,7 @@ private:
                 gen_error(func, format("Expected right to be var_sar or var_sar, but it wasn't. Don't expect anything else to work."));
             else if(left is null)
                 gen_error(func, format("Expected left to be var_sar or var_sar, but it wasn't. Don't expect anything else to work."));
-            else if(left.type != right.type)
+            else if(right.type != "null" && left.type != right.type)
                 gen_error(func, format("Expected left and right to be the same type, but they aren't: left[%s], right[%s]", left.type, right.type));
             else
             {
@@ -2184,7 +2851,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["NE", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["NE", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2209,7 +2876,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["AND", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["AND", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
 
@@ -2234,7 +2901,7 @@ private:
                 Symbol new_symbol = symbols.gen_tmp(_scope, "bool");
                 // Push a new var_sar
                 SAS.push(new var_sar(new_symbol.info["Value"], new_symbol.data["Type"], new_symbol.info["Symid"]));
-                icode.add(["OR", left.Symid, right.Symid, new_symbol.info["Symid"]]);
+                icode.add(["OR", ref_check(left.Symid), ref_check(right.Symid), new_symbol.info["Symid"]]);
             }
         }
     }
@@ -2559,9 +3226,15 @@ private:
     void gen_error(string func, string msg = "", string file = __FILE__, int line = __LINE__)
     {
         if(msg == "")
-            stderr.writef("gen_error: (in %s on line %d) [%d][%s] Encountered an error in function (%s) on token (%s).\n", file, line, tokenizer.ct.line, _scope.join("."), func, tokenizer.ct);
+        {
+            debug(gen_error) stderr.writef("gen_error: (in %s:%s on line %d) ", file, func, line);
+            stderr.writef("[%d][%s] Error on token (%s).\n", tokenizer.ct.line, _scope.join("."), tokenizer.ct);
+        }
         else
-            stderr.writef("gen_error: (in %s on line %d) [%d][%s] Encountered an error in function (%s): %s.\n", file, line, tokenizer.ct.line, _scope.join("."), func, msg);
+        {
+            debug(gen_error) stderr.writef("gen_error: (in %s:%s on line %d) ", file, func, line);
+            stderr.writef("[%d][%s] Error: %s.\n", tokenizer.ct.line, _scope.join("."), msg);
+        }
         errors++;
         if(errors >= 5)
         {
@@ -2610,7 +3283,7 @@ private:
 
         if(!check_token("type", "void")) 
         {
-            gen_error(func);
+            gen_error(func, format("Expected type \"void\", and got %s", tokenizer.ct.lexeme));
         } 
         debug(log1) log(func, tokenizer.ct.toString());
         // If I need the return type, I can get it before nextToken is called
@@ -2618,7 +3291,7 @@ private:
 
         if(!check_token("keyword", "main")) 
         {
-            gen_error(func);
+            gen_error(func, format("Expected keyword 'main', but got '%s'", tokenizer.ct.lexeme));
         }
         debug(log1) log(func, tokenizer.ct.toString());
         _scope ~= tokenizer.ct.lexeme;
@@ -2644,14 +3317,11 @@ private:
         }
         debug(log1) log(func, tokenizer.ct.toString());
 
-        if(pass == 2)
-            icode.set_label("M100");
-
         method_body();
 
         if(pass == 2)
         {
-            Symbol main_symbol = symbols.symIDsymbols["M100"];
+            Symbol main_symbol = symbols.find("main", "g");
             main_symbol.data["Size"] = format("%s", symbols.size_of(main_symbol.info["Symid"]));
         }
 
@@ -2660,8 +3330,10 @@ private:
     }
 
     // class_declaration::=
-    //     "class" class_name "{" 
-    //     {class_member_declaration} "}" 
+    //     "class" class_name 
+    //     "{" 
+    //     {class_member_declaration} 
+    //     "}" 
     //     ;
     void class_declaration() 
         {
@@ -2697,18 +3369,33 @@ private:
 
         if(!check_token("symbol", "{")) 
         {
-            stderr.writef("Not a {\n");
+            //stderr.writef("Not a {\n");
             gen_error(func);
         }
         debug(log1) log(func, tokenizer.ct.toString());
         tokenizer.nextToken();
 
-        while(check_token(["modifier", "class_name"]))
+        while((pass == 1 && check_token(["modifier", "identifier", "class_name"])) || (pass == 2 && check_token(["modifier", "class_name"])))
         {
             class_member_declaration();
         }
+
+        if(!check_token("symbol", "}"))
+        {
+            gen_error(func, format("Got \"%s\", when expecting a modifier, identifier, Constructor, or }", tokenizer.ct.lexeme));
+        }
         debug(log1) log(func, tokenizer.ct.toString());
         tokenizer.nextToken();
+
+        if(pass == 2)
+        {
+            current_symbol = symbols.find(_scope[$-1], _scope[0..$-1]);
+            //writef("Size of Class %s %s\n", _scope.join("."), symbols.size_of(current_symbol.info["Symid"]));
+            current_symbol.data["Size"] = format("%s", symbols.size_of(current_symbol.info["Symid"]));
+            //stderr.writef("current_symbol: %s\n", current_symbol);
+            //enforce(false, format("Need to check the size of the class here. ", _scope.join(".")));
+            current_symbol = null;
+        }
 
         _scope = _scope[0..$-1];
         debug(log1) log(func, "End");
@@ -2720,11 +3407,19 @@ private:
     {
         string func = "method_body";
         debug(log1) log(func, format("Start: %s", _scope));
+        if(pass == 2)
+        {
+            current_symbol = symbols.find(_scope[$-1], _scope[0..$-1]);
+            //symbols.size_of(current_symbol.info["Symid"]); // Check the size of all functions every pass2
+            enforce(current_symbol !is null);
+            icode.set_label(current_symbol.info["Symid"]);
+            current_symbol = null;
+        }
         // If we need the leading {, we can capture it here before nextToken
         tokenizer.nextToken();
 
         // {variable_declaration}
-        while((check_token(["type", "class_name"]) && !check_token("EOT")))
+        while(((pass == 1 && check_token(["type", "identifier", "class_name"]) && tokenizer.peek(1).type == "identifier") || (pass == 2 && check_token(["type", "class_name"])) && !check_token("EOT")))
         {
             variable_declaration();
         }
@@ -2755,7 +3450,13 @@ private:
         tokenizer.nextToken();
 
         if(pass == 2) 
+        {
+            current_symbol = symbols.find(_scope[$-1], _scope[0..$-1]);
+            enforce(current_symbol !is null);
+            symbols.size_of(current_symbol.info["Symid"]); // Check the size of all functions every pass2
+            current_symbol = null;
             icode.add(["RTN", "", "", ""]);
+        }
         debug(log1) log(func, "End");
     }
 
@@ -2775,8 +3476,12 @@ private:
             debug(log1) log(func, tokenizer.ct.toString());
             tokenizer.nextToken();
             
-            if(!check_token(["type", "class_name"])) {
-                gen_error(func);
+            if((pass == 1 && !(check_token(["identifier", "type", "class_name"])) || (pass == 2 && !check_token(["type","class_name"]))))
+            {
+                if(pass == 1)
+                    gen_error(func, format("Expected either a type or a identifier. '%s' is not a defined identifier or a built in type.", tokenizer.ct.lexeme));
+                if(pass == 2)
+                    gen_error(func, format("Expected either a type or a class_name. '%s' is not a defined identifier or a class_name.", tokenizer.ct.lexeme));
             }
             if(pass == 2)
                 SA.tPush();
@@ -2789,7 +3494,7 @@ private:
             tokenizer.nextToken();
 
             if(!check_token("identifier")) {
-                gen_error(func);
+                gen_error(func, format("Expected an identifier (variable name), but got '%s' instead.", tokenizer.ct.lexeme));
             }
             current_symbol.set_info(["Value":tokenizer.ct.lexeme,"Scope":_scope.join(".")]);
 
@@ -2798,7 +3503,7 @@ private:
 
             field_declaration();
         }
-	    else if(check_token("class_name",_scope[$-1])) // Check for Constructor
+	    else if((pass == 1 && check_token(["identifier", "class_name"])) || (pass == 2 && check_token("class_name",_scope[$-1]))) // Check for Constructor
 	    {
             constructor_declaration();
         }
@@ -2817,7 +3522,7 @@ private:
     {
         string func = "constructor_declaration";
         debug(log1) log(func, "Start");
-        if(!check_token("class_name", _scope[$-1]))
+        if((pass == 1 && !check_token(["identifier", "class_name"])) || (pass == 2 && !check_token("class_name", _scope[$-1])))
         {
             gen_error(func);
         }
@@ -2838,7 +3543,7 @@ private:
 
         if(!check_token("symbol", "("))
         {
-            gen_error(func);
+            gen_error(func, format("Expected a Constructor to be followed by \"(\" but got a \"%s\".", tokenizer.ct.lexeme));
         }
         debug(log1) log(func, tokenizer.ct.toString());
         tokenizer.nextToken();
@@ -2872,7 +3577,7 @@ private:
         string func = "parameter_list";
         debug(log1) log(func, "Start");
 
-        if(check_token(["type", "class_name"]))
+        if((pass == 1 && check_token(["type", "identifier", "class_name"])) || (pass == 2 && check_token(["type", "class_name"])))
         {
             parameter();
         }
@@ -2881,9 +3586,9 @@ private:
         {
             debug(log1) log(func, tokenizer.ct.toString());
             tokenizer.nextToken();
-            if(!check_token(["type", "class_name"]))
+            if((pass == 1 && !check_token(["type", "identifier", "class_name"])) || (pass == 2 && !check_token(["type", "class_name"])))
             {
-                gen_error(func);
+                gen_error(func, format("Expected a type or identifier name. '%s' is not a defined type or identifier.", tokenizer.ct.lexeme));
             }
             parameter();
         }
@@ -2901,9 +3606,9 @@ private:
     {
         string func = "parameter";
         debug(log1) log(func, "Start");
-        if(!check_token(["type", "class_name"]))
+        if((pass == 1 && !check_token(["type", "identifier", "class_name"])) || (pass == 2 && !check_token(["type", "class_name"])))
         {
-            gen_error(func);
+            gen_error(func, format("Expected a type or identifier name. '%s' is not a defined type or identifier.", tokenizer.ct.lexeme));
         }
         current_symbol = new Symbol;
         current_symbol.set_info(["Scope":_scope.join("."), "Kind":"param"]);
@@ -2962,7 +3667,7 @@ private:
         string func = "variable_declaration";
         debug(log1) log(func, "Start");
 
-        if(!check_token(["type", "class_name"])) 
+        if((pass == 1 && !check_token(["type", "identifier", "class_name"])) || (pass == 2 && !check_token(["type", "class_name"])))
         {
             gen_error(func);
         }
@@ -3069,7 +3774,7 @@ private:
             expression();
             if(!check_token("punctuation", ";"))
             {
-                gen_error(func);
+                gen_error(func, format("Expected ';', but got '%s'", tokenizer.ct.lexeme));
             }
             if(pass == 2)
                 SA.EOE();
@@ -3191,9 +3896,17 @@ private:
             {
                 expression(); 
             }
+            else
+            {
+                if(pass == 2)
+                    SAS.push(new var_sar(
+                        "null",
+                        "null",
+                        "null"));
+            }
             if(!check_token("punctuation", ";"))
             {
-                gen_error(func);
+                gen_error(func, format("Expected ';', but got '%s'", tokenizer.ct.lexeme));
             }
             if(pass == 2)
                 SA.EOE();
@@ -3209,7 +3922,7 @@ private:
             tokenizer.nextToken();
             if(!check_token("symbol", "<<"))
             {
-                gen_error(func);
+                gen_error(func, format("Expected '<<', but got '%s'", tokenizer.ct.lexeme));
             }
             debug(log1) log(func, tokenizer.ct.toString());
             tokenizer.nextToken();
@@ -3217,7 +3930,7 @@ private:
             expression();
             if(!check_token("punctuation", ";"))
             {
-                gen_error(func);
+                gen_error(func, format("Expected ';', but got '%s'", tokenizer.ct.lexeme));
             }
             if(pass == 2)
                 SA.EOE();
@@ -3334,7 +4047,7 @@ private:
 
             if(!check_token("symbol", ")"))
             {
-                gen_error(func);
+                gen_error(func, format("Expected \")\" and got \"%s\"", tokenizer.ct.lexeme));
             }
             debug(log1) log(func, tokenizer.ct.toString());
             tokenizer.nextToken();
@@ -3672,7 +4385,7 @@ private:
         {
             debug(log1) log(func, tokenizer.ct.toString());
             tokenizer.nextToken();
-            if(!check_token(["type", "class_name"]))
+            if((pass == 1 && !check_token(["type", "identifier", "class_name"])) || (pass == 2 && !check_token(["type", "class_name"])))
             {
                 gen_error(func);
             }
@@ -3827,6 +4540,7 @@ public:
     void run() 
     {
         pass = 1;
+        debug(log9) stderr.writef("Lexial/Syntax\n");
         _scope ~= "g";
         string func = "run";
         debug(log1) log(func, "Start");
@@ -3841,17 +4555,14 @@ public:
         debug(log1) stderr.writef("Completed Pass 1\n");
         debug(log0) print_symbols();
 
-        if(errors > 0)
-        {
-            stderr.writef("Errors encountered: [%d]\n", errors);
-            return;
-        }
+        enforce(errors == 0, format("Errors encountered: [%d]", errors));
 
         debug(log1) stderr.writef("Starting Pass 2\n");
         tokenizer.rewind();
         _scope.clear();
 
         pass = 2;
+        debug(log9) stderr.writef("Semantics/ICode\n");
         _scope ~= "g";
         debug(log1) log(func, "Start");
         compilation_unit();
@@ -3868,11 +4579,18 @@ public:
             log(func, format("Still have OS.length of [%d]", OS.length));
             log(func, format("Errors encountered: [%d]", errors));
         }
+        enforce(errors == 0, format("Errors encountered: [%d]", errors));
         debug(log0) print_symbols();
 
-        debug(log5) icode.output(stdout);
+        debug(log5) icode.output(stderr);
+        debug(log9) stderr.writef("Tcode start\n");
         tcode = new Tcode(icode.data, icode.labels, symbols);
-        auto outf = File("simple.asm", "w+");
+        debug(log9) stderr.writef("Done\n");
+    }
+
+    void tcode_gen(File outf)
+    {
+        //auto outf = File("simple.asm", "w+");
         //tcode.output(stdout);
         tcode.output(outf);
     }

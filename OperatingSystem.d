@@ -5,6 +5,9 @@ module OperatingSystem;
 version = STDIO;
 //version = KaiFS;
 //version = TINY;
+version = HUGE;
+//version = VIRTUALMEMORY;
+
 //debug = readhex;
 version(STDIO)
 {
@@ -52,9 +55,11 @@ import Utilities;
 
 //debug = instruction;
 
-
+enum PAGE_SIZE = 512;
 version(TINY)
     enum max_procs = 8, proc_size_in_memory = 1024 * 1;
+else version(HUGE)
+    enum max_procs = 8, proc_size_in_memory = 1024 * 500;
 else
     enum max_procs = 256, proc_size_in_memory = 1024 * 50;
 string[6] states = ["new", "ready", "waiting", "running", "terminated", "error"];
@@ -417,10 +422,178 @@ public:
     }
 }
 
+struct VirtualMemoryManager
+{
+    enum offset_bits = 9;
+    enum page_bits = (size_t.sizeof * 8) - offset_bits;
+    sizediff_t[size_t] pages;
+    size_t[size_t] page_used;
+    ByteCode[PAGE_SIZE][size_t] swap;
+    ByteCode[PAGE_SIZE] delegate(size_t pos) page_out;
+    void delegate(size_t pos, ByteCode[PAGE_SIZE]) page_in;
+    size_t[string] stats;
+
+    @property
+    {
+        void size(size_t new_length)
+        {
+            foreach(num; 0..new_length>>9)
+            {
+                pages[num] = to!(int)(num * PAGE_SIZE);
+                page_used[num] = 0;
+            }
+            stats["MH"] = 0;
+        }
+        void virt_size(size_t nvl)
+        {
+            stderr.writef("Starting at %d, going to %d\n", pages.length, nvl>>9);
+            foreach(num; pages.length..nvl>>9)
+            {
+                pages[num] = -1 - num;
+                page_used[num] = 0;
+            }
+            stats["DA"] = 0;
+        }
+    }
+    size_t least_used_page()
+    {
+        size_t least_used = size_t.max;
+        foreach(key; pages.keys.sort)
+        {
+            if(pages[key] >= 0)
+            {
+                if (least_used == size_t.max || page_used[key] < page_used[least_used])
+                {
+                   least_used = key;
+                }
+            }
+        }
+        foreach(key, value; page_used)
+        {
+            page_used[key] = 0;
+        }
+        return least_used;
+    }
+
+    size_t unused_swapped_page()
+    {
+        size_t unused_swap = size_t.max;
+        foreach(key; pages.keys.sort)
+        {
+            if(pages[key] < 0)
+            {
+                if((to!(size_t)(pages[key] * -1) in swap) is null)
+                {
+                    unused_swap = key;
+                    break;
+                }
+            }
+        }
+        return unused_swap;
+    }
+
+    size_t virt2phys(size_t index)
+    {
+        // To get the index of the page, we need to shift off the offset bits
+        // page_index = index >> offset_bits
+        // To get the offset, we can do a bitwise AND with the result of math.pow(2, page_bits) - 1, or we can just do two shifts to knock off those bits
+        // offset = index << page_bits >> page_bits;
+        page_used[index >> offset_bits] += 1;
+        enforce(index >> offset_bits < pages.length, format("Page requested out of bounds: [%d/%d]", index >> offset_bits, pages.length));
+        if(pages[index >> offset_bits] < 0)
+        {
+            stats["DA"] += 1;
+            stderr.writef("PAGE_FAULT!\n");
+            debug(paging)
+            {
+                stderr.writef("Pages: ");
+                foreach(key; pages.keys.sort)
+                {
+                    stderr.writef("[%s:%s]", key, pages[key]);
+                }
+                stderr.writef("\n");
+                stderr.writef("Page_used: ");
+                foreach(key; page_used.keys.sort)
+                {
+                    stderr.writef("[%s:%s]", key, page_used[key]);
+                }
+                stderr.writef("\n");
+                stderr.writef("Swap_used: ");
+                foreach(key; swap.keys.sort)
+                {
+                    stderr.writef("[%s]", key);
+                }
+                stderr.writef("\n");
+            }
+            size_t need = index >> offset_bits;
+            debug(paging)
+                stderr.writef("PAGE_FAULT: virt[%d] page_needed[%d] swap[%d] ", index, index >> offset_bits, pages[index >> offset_bits]);
+            // Find Least Used page
+            size_t least_used = least_used_page();
+            debug(paging)
+                stderr.writef("least_used[%d] phy[%d] ", least_used, pages[least_used]);
+            // Find an unused location in Swap
+            size_t unused_swap = unused_swapped_page();
+            enforce(unused_swap != size_t.max, "Memory manager shouldn't depend on paging to determine if we are out of memory");
+            debug(paging)
+                stderr.writef("unused_swap[%d](%d) ", unused_swap, pages[unused_swap]);
+            // Swap out
+            swap[to!(size_t)(pages[unused_swap] * -1)] = page_out(pages[least_used]);
+            size_t tmp2 = pages[least_used];
+            pages[least_used] = pages[unused_swap];
+            // Swap in
+            if(need != unused_swap)
+            {
+                debug(paging)
+                    stderr.writef("tmp2[%d] ", tmp2);
+                if((to!(size_t)(pages[need] * -1) in swap) !is null)
+                {
+                    page_in(tmp2, swap[to!(size_t)(pages[need] * -1)]);
+                    swap.remove(to!(size_t)(pages[need] * -1));
+                }
+                pages[unused_swap] = pages[need];
+            }
+            pages[need] = tmp2;
+            debug(paging)
+            {
+                stderr.writef("\n");
+                stderr.writef("Pages: ");
+                foreach(key; pages.keys.sort)
+                {
+                    stderr.writef("[%s:%s]", key, pages[key]);
+                }
+                stderr.writef("\n");
+                stderr.writef("Page_used: ");
+                foreach(key; page_used.keys.sort)
+                {
+                    stderr.writef("[%s:%s]", key, page_used[key]);
+                }
+                stderr.writef("\n");
+                stderr.writef("Swap_used: ");
+                foreach(key; swap.keys.sort)
+                {
+                    stderr.writef("[%s]", key);
+                }
+                stderr.writef("\n");
+            }
+        }
+        else
+        {
+            stats["MH"] += 1;
+        }
+        return pages[index >> offset_bits] + (index << page_bits >> page_bits);
+    }
+}
+
+
 class OperatingSystem 
 {
 private:
     VirtualMachine vm;
+    version(VIRTUALMEMORY)
+    {
+        VirtualMemoryManager vmm;
+    }
     Valid_Registers valid_registers;
     bool alldone;
     void delegate(string)[string] commands;
@@ -430,13 +603,13 @@ private:
     ProcessList process_list;
     Process shell_proc;
     //string buffer;
-    uint PC; // Program Counter Register
-    uint SL; // Stack Limit Register
-    uint SB; // Stack Base Register
-    uint SP; // Stack Pointer
-    uint FP; // Frame Pointer
-    uint OF; // Offset
-    uint TC; // Hardware Thread Count
+    Register PC; // Program Counter Register
+    Register SL; // Stack Limit Register
+    Register SB; // Stack Base Register
+    Register SP; // Stack Pointer
+    Register FP; // Frame Pointer
+    Register OF; // Offset
+    Register TC; // Hardware Thread Count
     bool echo = false;
 
     PerfMetrics metrics;
@@ -488,7 +661,6 @@ private:
             writef("%-10s%11d\n", "Switches", switches);
         }
     }
-
 
     void unknown_command(string args) {
         stderr.writef("Unknown command: %s\n", args);
@@ -851,10 +1023,19 @@ private:
         }
         if(!error)
         {
-            writef("%-15s: %d\n", "Free Memory", memory.count(false) * memory.block_size);
-            writef("%-15s: %d\n", "Used Memory", memory.count(true) * memory.block_size);
-            writef("%-15s: %d\n", "Block Size", memory.block_size);
-            writef("%-15s: %s\n", "Memory Map", memory);
+            writef("%-15s: %d\n",    "Free Memory", memory.count(false) * memory.block_size);
+            writef("%-15s: %d\n",    "Used Memory", memory.count(true) * memory.block_size);
+            writef("%-15s: %d\n",    "Block Size", memory.block_size);
+            writef("%-15s: %s\n",    "Memory Map", memory);
+            version(VIRTUALMEMORY)
+            {
+                writef("%-15s: %d\n",    "Memory Hits", vmm.stats.get("MH", 0));
+                writef("%-15s: %d\n",    "Swap Hits", vmm.stats.get("DA", 0));
+                double MAT = 0;
+                if(vmm.stats.get("MH", 0) > 0 || vmm.stats.get("DA", 0) > 0)
+                    MAT = (vmm.stats.get("MH", 0) * 20000 + vmm.stats.get("MH", 0) * 200) / (vmm.stats.get("MH", 0) + vmm.stats.get("DA", 0));
+                writef("%-15s: %5.2f μs\n", "Avg MAT", MAT);
+            }
         }
     }
 
@@ -1062,9 +1243,9 @@ private:
         cur_scheduler.current.state = 2;
         vm.fetch_registers(cur_scheduler.current.R);
         vm.fetch_vm_threads(cur_scheduler.current.active_threads, cur_scheduler.current.available_threads);
-        int new_size = vm.fetch_register(I.op2);
+        sizediff_t new_size = vm.fetch_register(I.op2);
         MemoryManagement!(ulong[4]) proc_mem = read_memory!(MemoryManagement!(ulong[4]))(cur_scheduler.current.R[OF] + cur_scheduler.current.size);
-        int address = cur_scheduler.current.size + proc_mem.allocate(new_size);
+        sizediff_t address = cur_scheduler.current.size + proc_mem.allocate(new_size);
         // If allocate returned 0, we're out of memory
         if(address == cur_scheduler.current.size)
         {
@@ -1081,7 +1262,7 @@ private:
         // If end of new address is < SP, return address
         else
         {
-            write_memory!(int)(new_size, cur_scheduler.current.R[OF] + address);
+            write_memory!(sizediff_t)(new_size, cur_scheduler.current.R[OF] + address);
             cur_scheduler.current.R[0] = address; // Set R0 to the address allocated
             // If end of new address is > SL need to move SL
             cur_scheduler.current.R[SL] = cur_scheduler.current.size + proc_mem.SL_pos;
@@ -1097,7 +1278,7 @@ private:
         cur_scheduler.current.state = 2;
         vm.fetch_registers(cur_scheduler.current.R);
         vm.fetch_vm_threads(cur_scheduler.current.active_threads, cur_scheduler.current.available_threads);
-        int address = vm.fetch_register(I.op2);
+        sizediff_t address = vm.fetch_register(I.op2);
         MemoryManagement!(ulong[4]) proc_mem = read_memory!(MemoryManagement!(ulong[4]))(cur_scheduler.current.R[OF] + cur_scheduler.current.size);
 
         int size = read_memory!(int)(cur_scheduler.current.R[OF] + address);
@@ -1213,7 +1394,24 @@ public:
             //vm.size = 4096;
             //vm.virt_size = 8192;
             vm.size = (system_memory.used * system_memory.block_size) / 2;
-            vm.virt_size = system_memory.used * system_memory.block_size;
+            version(VIRTUALMEMORY)
+            {
+                vm.virt_size = system_memory.used * system_memory.block_size;
+                vm.virt2phys = &vmm.virt2phys;
+                vmm.page_in = vm.page_in;
+                vmm.page_out = vm.page_out;
+                vmm.size = (system_memory.used * system_memory.block_size) / 2;
+                vmm.virt_size = system_memory.used * system_memory.block_size;
+            }
+        }
+        else version(HUGE)
+        {
+            system_memory.block_size = KFS.block_size;
+            system_memory.used = system_memory.max_used;
+            vm.size = (system_memory.used * system_memory.block_size) / 2;
+            stderr.writef("Size: %d\n", vm.size);
+            //vm.virt_size = system_memory.used * system_memory.block_size;
+            stderr.writef("Virt_size: %d\n", vm.size);
         }
         else
         {
@@ -1221,7 +1419,7 @@ public:
             system_memory.used = system_memory.max_used;
             vm.size = (system_memory.used * system_memory.block_size) / 2;
             stderr.writef("Size: %d\n", vm.size);
-            vm.virt_size = system_memory.used * system_memory.block_size;
+            //vm.virt_size = system_memory.used * system_memory.block_size;
             stderr.writef("Virt_size: %d\n", vm.size);
         }
         system_memory.allocate(system_memory.sizeof);
@@ -1292,7 +1490,8 @@ public:
     }
 
     void shell(std.stdio.File instream, bool e = false) {
-        DISK = std.stdio.File("DISK", "r+b");
+        version(KFS)
+            DISK = std.stdio.File("DISK", "r+b");
         try
         {
             chdir(std.file.getcwd());
@@ -1336,6 +1535,7 @@ public:
             } 
         }
         shell_proc.state = 4;
-        DISK.close();
+        version(KFS)
+            DISK.close();
     }
 }

@@ -1,10 +1,12 @@
+
+
 class iNode 
 {
     public int root;
     public iNode left;
     public iNode right;
 
-    iNode (int key) 
+    iNode(int key) 
     {
         root = key;
         left = null;
@@ -12,7 +14,7 @@ class iNode
     }
 }
 
-class iTree
+class iTree 
 {
     private iNode root;
     private bool first;
@@ -30,43 +32,57 @@ class iTree
             return true;
         }
         else
-            return insert(key, root, 42);
+        {
+            return insert(key, root);
+        }
     }
 
     private bool insert(int key, iNode node) 
     {
         if (key < node.root)
+        {
             if (node.left == null) 
             {
                 node.left = new iNode(key);
                 return true;
             }
             else 
+            {
                 return insert(key, node.left);
+            }
+        }
         else if (key > node.root)
+        {
             if (node.right == null) 
             {
                 node.right = new iNode(key);
                 return true;
             }
             else
+            {
                 return insert(key, node.right);
+            }
+        }
         else
+        {
             return false;
+        }
     }
 
 
-    public void print()
+    public void print() 
     {
         first = true;
         inorder(root);
         cout << '\n';
     }
     
-    private void inorder(iNode node)
+    private void inorder(iNode node) 
     {
         if (node == null) 
+        {
             return;
+        }
         inorder(node.left);
         visit(node);
         inorder(node.right);
@@ -80,11 +96,14 @@ class iTree
             cout << ' ';
         }
         else 
+        {
             cout << ',';
+        }
         cout << node.root;
     }
 }
 
+//* Without using an Array is DemoB */
 class Message 
 {
     private char msg[];
@@ -125,18 +144,18 @@ class Message
         msg[26] = 't';
         msg[27] = 'e';
         msg[28] = 'r';
-    
     }
 
-    private void print(int i, int end) 
+    private void print(int i1, int end1) 
     {
-        while (i <= end) 
+        while (i1 <= end1) 
         {
-            cout << msg[i];
-            i = i + 1;
+            cout << msg[i1];
+            i1 = i1 + 1;
         }
     }   
 
+    //* Added */
     public void msg1(int elm) 
     {
         print(0, 13);
@@ -144,7 +163,8 @@ class Message
         cout << '\n';
     }
 
-    public bool msg2(int elm) 
+    //* Duplicate */
+    public void msg2(int elm) 
     {
         i = 14;
         end = (i + 9);
@@ -155,7 +175,7 @@ class Message
         cout << '\n';
     }
     
-    public int msg3() 
+    public void msg3() 
     {
         print(24, 28);
         i = 5;
@@ -164,7 +184,11 @@ class Message
     }
 }
 
-void main() {
+
+
+
+void main() 
+{
     int key;
     iTree tree;
     Message msg = new Message();
@@ -181,7 +205,9 @@ void main() {
             tree.print();
         }
         else 
-            msg.msg2('k');
+        {
+            msg.msg2(key);
+        }
         msg.msg3();
         cin >> key;
         cout << '\n';

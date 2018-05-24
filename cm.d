@@ -11,6 +11,7 @@ int main(string[] args) {
         Tokenizer tokenizer = new Tokenizer(args[1]);
         Compiler compiler = new Compiler(tokenizer);
         compiler.run();
+        compiler.tcode_gen(File(args[2], "w+"));
     } catch (Exception e){
         stderr.writef("Exception thrown! : %s\n", e.msg);
         retval = 1;

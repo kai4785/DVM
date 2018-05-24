@@ -15,13 +15,13 @@ import std.exception;
 alias ubyte ByteCode;
 
 // Storage type of the Directives.
-alias int   Directive;
+alias sizediff_t   Directive;
 // We may potentially need to store .INT directives differently than .BYT directives
 alias ubyte Directive_Byte;
-alias int   Directive_Int;
+alias sizediff_t   Directive_Int;
 
 // What data type for the registers?
-alias int Register;
+alias sizediff_t Register;
 
 struct AssemblyHeader {
 public:
@@ -42,7 +42,7 @@ struct Instruction {
   enum opcode_s = 6, mode_s = 2, op1_s = 24, op2_s = 32; 
   // All values should be
   alias ulong instruction_type;
-  alias int storage_type;
+  alias sizediff_t storage_type;
   alias uint opcode_type;
   // Each instruction needs to be stored and retrieved in different ways
   union {
@@ -81,8 +81,10 @@ void print_Instruction(Instruction inst) {
 }
 
 class Valid_Registers {
-  uint to_Register[string];
-  string to_string[uint];
+  //uint to_Register[string];
+  // TODO: Verify that size_t is ok for a register size
+  size_t to_Register[string];
+  string to_string[size_t];
   bool read_only[string];
   const size_t length = 15;
   this() {
@@ -107,7 +109,6 @@ class Valid_Registers {
     }
     read_only["PC"] = true;
     read_only["SB"] = true;
-    read_only["SL"] = true;
     read_only["OF"] = true;
   }
 
@@ -183,7 +184,7 @@ public:
     {
         size_t last_set_bit()
         {
-            int i = _used - 1;
+            sizediff_t i = _used - 1;
             while(i > 0 && !this[i])
             {
                 i--;

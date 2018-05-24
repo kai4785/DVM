@@ -8,6 +8,10 @@ import std.string;
 
 import Utilities;
 
+debug = log9; // Phases
+//debug = pass1;
+//debug = pass2;
+
 class Assembler {
 private:
   this() {
@@ -29,6 +33,7 @@ private:
 
   void pass1() {
     debug(pass1) stderr.writeln("pass1: Opening ", filename, " for reading in pass1.");
+    debug(log9) stderr.writef("Assembler Pass1\n");
     line_num = 0;
     //code_size = header.data.sizeof;
     code_size = 0;
@@ -80,10 +85,11 @@ private:
 
   void pass2() {
     debug(pass2) stderr.writeln("pass2: Opening ", filename, " for reading in pass2.");
+    debug(log9) stderr.writef("Assembler Pass2\n");
     program.length = header.data.sizeof + code_size + data_size; // Set the size of the static data for the program
-    code_pos = header.data.sizeof;
-    data_pos = header.data.sizeof + code_size;
-    header.data[0] = program.length - header.data.sizeof;
+    code_pos = to!(uint)(header.data.sizeof);
+    data_pos = to!(uint)(header.data.sizeof + code_size);
+    header.data[0] = to!(uint)(program.length - header.data.sizeof);
     header.data[1] = 0;
     header.data[2] = 0;
     debug(pass2)

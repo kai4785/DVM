@@ -1185,13 +1185,13 @@ public:
     int lastWriteTime()
     {
         ensureStatDone();
-        return header.createTime + header.lastWriteTime;
+        return to!(int)(header.createTime + header.lastWriteTime);
     }
 
     int createTime()
     {
         ensureStatDone();
-        return header.createTime;
+        return to!(int)(header.createTime);
     }
 
     string lastWriteTime_str()

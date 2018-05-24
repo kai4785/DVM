@@ -19,39 +19,39 @@ void main()
     int sum;
     DemoC dc;
     dc = new DemoC();
-    cout << '>';
+    cout << ':';
     cin >> k;
     cout << '\n';
     while (k != 0) 
     {
-        if (k >= 0) 
+        if (k < 0) 
         {
             k = 5 + k * -1 - 2;
             sum = 0;
-        while (k > 0) 
-        {
-            j = k;
-            while (j > 0) 
+            while (k > 0) 
             {
-                if ((j / 3) == 0)
-                    sum = (sum + j);
-                j = (j - 1);
+                j = k;
+                while (j > 0) 
+                {
+                    if ((j / 3) == 0)
+                        sum = sum + j;
+                    j = j - 1;
+                }
+                k = k - 1;
             }
-            k = (k - 1);
-        }
-        cout << sum;
-        cout << '\n';
+            cout << sum;
+            cout << '\n';
         }
         else 
         {
             j = 1;
             sum = 0;
-            while(j < k * 100) 
+            while(j <= k * 100) 
             {
                 sum = sum + (j + sum)/(sum + j);
                 if (sum == 200 || sum == 300)
                    sum = sum + 2;
-                j = (j + 1);
+                j = j + 1;
             }
             cout << sum;
             cout << '\n';

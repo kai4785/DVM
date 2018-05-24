@@ -46,7 +46,7 @@ void main()
 	    }
 	    else 
         {
-	        sum = dc.fib();
+	        sum = dc.fib(k);
 	        cout << sum;
 	        cout << '\n'; 
         }

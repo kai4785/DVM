@@ -2,26 +2,26 @@
 # I've decided to throw away my sanity, and try to do this in D
 # And also write code that works on both Windows and Linux
 
-COMPILER = dmd
+COMPILER := dmd
 
 # Differentiate between a Linux and Windows build
 ifeq (${windir},)
-  RM = rm -f
-  BIN_EXT = 
-  OBJ_EXT = o
+  RM := rm -f
+  BIN_EXT := 
+  OBJ_EXT := o
 else
-  RM = del
-  BIN_EXT = .exe
-  OBJ_EXT = obj
+  RM := del
+  BIN_EXT := .exe
+  OBJ_EXT := obj
 endif
 
-release: DFLAGS = -release -O -inline -L-lrt
+release: DFLAGS := -release -O -inline -L-lrt
 release: all
-debug: DFLAGS = -wi -debug -L-lrt
+debug: DFLAGS := -wi -debug -L-lrt
 debug: all
-profile: DFLAGS = -wi -profile -L-lrt
+profile: DFLAGS := -wi -profile -L-lrt
 profile: all
-unittest: DFLAGS = -debug -unittest -L-lrt
+unittest: DFLAGS := -debug -unittest -L-lrt
 unittest: all
 
 Compiler.${OBJ_EXT}: Compiler.d

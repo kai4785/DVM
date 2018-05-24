@@ -18,37 +18,36 @@ import Assembler;
 //debug = memory_access;
 //debug = vmemory_access;
 //debug = paging;
-version = VIRTUALMEMORY;
+//version = VIRTUALMEMORY;
+enum PAGE_SIZE = 512;
 
 class Thread {
 private:
-    uint _id;
-    uint _SL;
-    uint _SB;
+    size_t _id;
+    Register _SL;
+    Register _SB;
     this() {}
 public:
-    this(uint i, uint L, uint a) {
+    this(size_t i, Register L, Register B) {
         _id = i;
         _SL = L;
-        _SB = a;
+        _SB = B;
         debug(threads) stderr.writef("Adding thread id %d\n", _id);
     }
-    @property uint id() { return _id; }
-    @property uint SB() { return _SB; }
-    @property uint SL() { return _SL; }
+    @property size_t id() { return _id; }
+    @property Register SB() { return _SB; }
+    @property Register SL() { return _SL; }
     //@property void SB(uint a) { _addr = a ; }
 }
 
 struct VirtualMemory
 {
-    enum PAGE_SIZE = 512;
     enum offset_bits = 9;
     enum page_bits = (size_t.sizeof * 8) - offset_bits;
+    size_t delegate(size_t) virt2phys;
     ByteCode[] memory;
     size_t _virt_length;
-    int[size_t] pages;
-    size_t[size_t] page_used;
-    ByteCode[PAGE_SIZE][size_t] swap;
+
     @property 
     {
         size_t length()
@@ -62,11 +61,6 @@ struct VirtualMemory
             memory.length = new_length;
             _virt_length = new_length;
             writef("Number of pages: [%d=%d*%d=%d]\n", new_length, new_length >> 9, PAGE_SIZE, (new_length >> 9) * PAGE_SIZE);
-            foreach(num; 0.._virt_length>>9)
-            {
-                pages[num] = num * PAGE_SIZE;
-                page_used[num] = 0;
-            }
         }
         size_t virt_length()
         {
@@ -78,140 +72,19 @@ struct VirtualMemory
             enforce(nvl >= memory.length, "Can't set virtual memory size less than physical memory.");
             _virt_length = nvl;
             writef("Number of new pages: [%d=%d*%d=%d]\n", nvl - memory.length, (nvl - memory.length) >> 9, PAGE_SIZE, ((nvl - memory.length) >> 9) * PAGE_SIZE);
-            stderr.writef("Starting at %d, going to %d\n", pages.length, nvl>>9);
-            foreach(num; pages.length..nvl>>9)
-            {
-                pages[num] = -1 - num;
-                page_used[num] = 0;
-            }
         }
     }
 
-    size_t least_used_page()
-    {
-        size_t least_used = size_t.max;
-        foreach(key; pages.keys.sort)
-        {
-            if(pages[key] >= 0)
-            {
-                if (least_used == size_t.max || page_used[key] < page_used[least_used])
-                {
-                   least_used = key;
-                }
-            }
-        }
-        foreach(key, value; page_used)
-        {
-            page_used[key] = 0;
-        }
-        return least_used;
-    }
 
-    size_t unused_swapped_page()
+    ByteCode[PAGE_SIZE] page_out(size_t pos)
     {
-        size_t unused_swap = size_t.max;
-        foreach(key; pages.keys.sort)
-        {
-            if(pages[key] < 0)
-            {
-                if((to!(size_t)(pages[key] * -1) in swap) is null)
-                {
-                    unused_swap = key;
-                    break;
-                }
-            }
-        }
-        return unused_swap;
+        ByteCode[PAGE_SIZE] retval;
+        retval[0..$] = memory[pos..pos+PAGE_SIZE];
+        return retval;
     }
-
-    size_t virt2phys(size_t index)
+    void page_in(size_t pos, ByteCode[PAGE_SIZE] in_bytes)
     {
-        // To get the index of the page, we need to shift off the offset bits
-        // page_index = index >> offset_bits
-        // To get the offset, we can do a bitwise AND with the result of math.pow(2, page_bits) - 1, or we can just do two shifts to knock off those bits
-        // offset = index << page_bits >> page_bits;
-        page_used[index >> offset_bits] += 1;
-        enforce(index >> offset_bits < pages.length, format("Page requested out of bounds: [%d/%d]", index >> offset_bits, pages.length));
-        if(pages[index >> offset_bits] < 0)
-        {
-            stderr.writef("PAGE_FAULT!\n");
-            debug(paging)
-            {
-                stderr.writef("Pages: ");
-                foreach(key; pages.keys.sort)
-                {
-                    stderr.writef("[%s:%s]", key, pages[key]);
-                }
-                stderr.writef("\n");
-                stderr.writef("Page_used: ");
-                foreach(key; page_used.keys.sort)
-                {
-                    stderr.writef("[%s:%s]", key, page_used[key]);
-                }
-                stderr.writef("\n");
-                stderr.writef("Swap_used: ");
-                foreach(key; swap.keys.sort)
-                {
-                    stderr.writef("[%s]", key);
-                }
-                stderr.writef("\n");
-            }
-            size_t need = index >> offset_bits;
-            debug(paging)
-                stderr.writef("PAGE_FAULT: virt[%d] page_needed[%d] swap[%d] ", index, index >> offset_bits, pages[index >> offset_bits]);
-            // Find Least Used page
-            size_t least_used = least_used_page();
-            debug(paging)
-                stderr.writef("least_used[%d] phy[%d] ", least_used, pages[least_used]);
-            // Find an unused location in Swap
-            size_t unused_swap = unused_swapped_page();
-            enforce(unused_swap != size_t.max, "Memory manager shouldn't depend on paging to determine if we are out of memory");
-            debug(paging)
-                stderr.writef("unused_swap[%d](%d) ", unused_swap, pages[unused_swap]);
-            // Swap out
-            ByteCode[PAGE_SIZE] tmp;
-            tmp[0..$] = memory[pages[least_used]..pages[least_used]+PAGE_SIZE];
-            swap[to!(size_t)(pages[unused_swap] * -1)] = tmp;
-            size_t tmp2 = pages[least_used];
-            pages[least_used] = pages[unused_swap];
-            // Swap in
-            if(need != unused_swap)
-            {
-                debug(paging)
-                    stderr.writef("tmp2[%d] ", tmp2);
-                if((to!(size_t)(pages[need] * -1) in swap) !is null)
-                {
-                    memory[tmp2..tmp2+PAGE_SIZE] = 
-                        swap[to!(size_t)(pages[need] * -1)][0..$];
-                    swap.remove(to!(size_t)(pages[need] * -1));
-                }
-                pages[unused_swap] = pages[need];
-            }
-            pages[need] = tmp2;
-            debug(paging)
-            {
-                stderr.writef("\n");
-                stderr.writef("Pages: ");
-                foreach(key; pages.keys.sort)
-                {
-                    stderr.writef("[%s:%s]", key, pages[key]);
-                }
-                stderr.writef("\n");
-                stderr.writef("Page_used: ");
-                foreach(key; page_used.keys.sort)
-                {
-                    stderr.writef("[%s:%s]", key, page_used[key]);
-                }
-                stderr.writef("\n");
-                stderr.writef("Swap_used: ");
-                foreach(key; swap.keys.sort)
-                {
-                    stderr.writef("[%s]", key);
-                }
-                stderr.writef("\n");
-            }
-        }
-        return pages[index >> offset_bits] + (index << page_bits >> page_bits);
+        memory[pos..pos+PAGE_SIZE] = in_bytes[0..$];
     }
     void opIndexAssign(ByteCode b, size_t index)
     {
@@ -298,13 +171,13 @@ private:
     // We are running!
     bool _running = true;
     // Labels for Special Purpose Registers
-    uint PC; // Program Counter Register
-    uint SL; // Stack Limit Register
-    uint SB; // Stack Base Register
-    uint SP; // Stack Pointer
-    uint FP; // Frame Pointer
-    uint OF; // Offset
-    uint TC; // Hardware Thread Count
+    Register PC; // Program Counter Register
+    Register SL; // Stack Limit Register
+    Register SB; // Stack Base Register
+    Register SP; // Stack Pointer
+    Register FP; // Frame Pointer
+    Register OF; // Offset
+    Register TC; // Hardware Thread Count
     // All Registers (Including special purpose ones)
     Register[Valid_Registers.length] R;
     // Offset into memory we start at
@@ -324,14 +197,18 @@ private:
     Assembler assembler;
     // Actual Bytecode
     version(VIRTUALMEMORY)
+    {
         VirtualMemory memory;
+    }
     else
+    {
         ByteCode[] memory;
+    }
     // Associatve array of OpCode functions
     void delegate(Instruction) operations[string];
     // Associatve array of Trap Handler functions
-    void delegate(Instruction) TRP_handlers[int];
-    void delegate() SIG_handlers[int];
+    void delegate(Instruction) TRP_handlers[sizediff_t];
+    void delegate() SIG_handlers[sizediff_t];
 
     void init() {
         valid_opcodes = new Valid_OpCodes();
@@ -407,6 +284,7 @@ private:
 
     Directive_Byte read_byte(size_t loc)
     {
+        enforce(loc + R[OF] > 0 && loc + R[OF] < memory.length);
         debug(memory_access)
             stderr.writef("Reading a byte at position [%d]\n", loc + R[OF]);
         return memory[loc + R[OF]];
@@ -513,9 +391,9 @@ private:
             debug(instruction) {
                 string* symbol = (R[I.op2] in symbol_table);
                 if (symbol == null)
-                    stderr.writef("%s(%d)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], read_int(I.op2));
+                    stderr.writef("%s(%d)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], read_int(R[I.op2]));
                 else
-                    stderr.writef("%s(%d:%s)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], *symbol, read_int(I.op2));
+                    stderr.writef("%s(%d:%s)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], *symbol, read_int(R[I.op2]));
             }
         } else {
             throw(new Exception("Unknown adressing mode(" ~ to!(string)(I.mode) ~ ") in LDR statement\n"));
@@ -523,11 +401,12 @@ private:
     }
     void do_STB(Instruction I) {
         debug(instruction) {
-            if (R[I.op1] != 10)
+            if (R[I.op1] != 10 && R[I.op1] > 0 && R[I.op1] < ByteCode.max)
                 stderr.writef("instruction: [%d] (%d) STB %s(%d:'%s') => ", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], to!(char)(to!(ubyte)(R[I.op1])));
             else
                 stderr.writef("instruction: [%d] (%d) STB %s(%d:'\\n') => ", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1]);
         }
+        enforce(R[I.op1] < ByteCode.max, format("Can't convert %d to a %s with a max size of %d", R[I.op1], ByteCode.stringof, ByteCode.max));
         if (I.mode == 0) {
             write_byte(I.op2, to!(ubyte)(R[I.op1]));
             debug(instruction) stderr.writef("%d\n", I.op2);
@@ -563,7 +442,7 @@ private:
         R[I.op1] += R[I.op2];
     }
     void do_ADI(Instruction I) { 
-        debug(instruction) stderr.writef("instruction: [%d] (%d) ADI %s += %d = ", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], I.op2);
+        debug(instruction) stderr.writef("instruction: [%d] (%d) ADI %s(%d) += %d = ", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], I.op2);
         R[I.op1] += I.op2 * Directive_Byte.sizeof; 
         debug(instruction) stderr.writefln("%d", R[I.op1]);
     }
@@ -579,8 +458,16 @@ private:
         debug(instruction) stderr.writefln("instruction: [%d] (%d) DIV %s(%d) /= %s(%d)", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], valid_registers.to_string[I.op2], R[I.op2]);
         R[I.op1] /= R[I.op2];
     }
-    void do_AND(Instruction I) {}
-    void do_OR (Instruction I) {}
+    void do_AND(Instruction I) 
+    {
+        debug(instruction) stderr.writefln("instruction: [%d] (%d) AND %s(%d) &= %s(%d)", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], valid_registers.to_string[I.op2], R[I.op2]);
+        R[I.op1] = (R[I.op1] > 0 && R[I.op2] > 0);
+    }
+    void do_OR (Instruction I)
+    {
+        debug(instruction) stderr.writefln("instruction: [%d] (%d) OR %s(%d) |= %s(%d)", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], valid_registers.to_string[I.op2], R[I.op2]);
+        R[I.op1] = (R[I.op1] > 0 || R[I.op2] > 0 );
+    }
     void do_CMP(Instruction I) {
         debug(instruction) stderr.writefln("instruction: [%d] (%d) CMP %s(%d) -= %s(%d)", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1], valid_registers.to_string[I.op2], R[I.op2]);
         R[I.op1] -= R[I.op2];
@@ -605,7 +492,7 @@ private:
             throw(new Exception("OpCode (RUN) encountered in a VM with only 1 thread."));
         }
         R[I.op1] = active_threads[0].id;
-        int retval = activate_thread(I.op1, I.op2, R);
+        sizediff_t retval = activate_thread(I.op1, I.op2, R);
         debug(threads) stderr.writef("threads:    Attempted to start a thread, which returned %d\n", retval);
         if(retval == 1) {
             R[PC] -= Instruction.sizeof;
@@ -667,9 +554,9 @@ private:
         // Create new main thread (0) stack space and store registers
         //R[SL] = prog_end;
         //prog_end += thread_stack_size;
-        uint prog_end = R[SL];
+        size_t prog_end = R[SL];
 
-        uint thread_stack_size = (R[SB] - prog_end) / R[TC];
+        size_t thread_stack_size = (R[SB] - prog_end) / R[TC];
         debug(threads) {
                 stderr.writef("  thread: Stack size (%d - %d) / %d = %d\n", prog_end, R[SB], R[TC], thread_stack_size);
                 stderr.writef("  thread: Setting thread %d (%d - %d)\n", 0, prog_end, prog_end + thread_stack_size - 1);
@@ -712,7 +599,7 @@ private:
     void read_registers(Thread thread) {
         debug(threads)
             stderr.writef("threads: pre read_registers: %s [%d]\n", R, R.length);
-        uint thread_SB = thread.SB - R.sizeof;
+        size_t thread_SB = thread.SB - R.sizeof;
         foreach(i; 0..R.length)
         {
             R[i] = read_int(thread_SB + i * R[0].sizeof);
@@ -721,11 +608,11 @@ private:
             stderr.writef("threads: post read_registers: %s [%d] %d %d\n", R, R.length, thread.SB, thread_SB);
     }
 
-    void store_registers(Thread thread, int[Valid_Registers.length] R_copy) {
+    void store_registers(Thread thread, Register[Valid_Registers.length] R_copy) {
         debug(threads)
             stderr.writef("threads: pre store_registers: %s [%d]\n", R_copy, R_copy.length);
         // Store bytes into the vm memory
-        uint thread_SB = thread.SB - R_copy.sizeof;
+        size_t thread_SB = thread.SB - R_copy.sizeof;
         foreach(i; 0..R_copy.length)
         {
             write_int(thread_SB + i * R_copy[0].sizeof, R_copy[i]);
@@ -738,7 +625,7 @@ private:
 //   Returns:
 //     0 if successful
 //     1 if not threads available
-    int activate_thread(uint THID_R, uint new_PC, int[Valid_Registers.length] R_copy) {
+    sizediff_t activate_thread(size_t THID_R, size_t new_PC, Register[Valid_Registers.length] R_copy) {
         debug(threads) {
             stderr.writef("threads: Activating new thread at PC: %d\n", new_PC);
             stderr.writef("threads: There are %d threads available\n", available_threads.length);
@@ -878,10 +765,15 @@ public:
 
     @property
     {
-        uint size() { return memory.length; }
-        void size(uint l) { memory.length = l; }
+        size_t size() { return memory.length; }
+        void size(size_t l) { memory.length = l;}
         version(VIRTUALMEMORY)
+        {
+            auto page_out() { return &memory.page_out; };
+            auto page_in() { return &memory.page_in; };
+            void virt2phys(size_t delegate(size_t) virt2phys) { memory.virt2phys = virt2phys; }
             void virt_size(uint l) { memory.virt_length = l; }
+        }
         bool running() { return _running; }
         void running(bool b) { _running = b; }
         Thread active_thread() { return active_threads[0]; }
@@ -925,7 +817,7 @@ public:
         }
     }
 
-    int fetch_register(string reg) {
+    sizediff_t fetch_register(string reg) {
         if(valid_registers.is_valid(reg)) {
             return R[valid_registers.to_Register[reg]];
         } else {
@@ -933,7 +825,7 @@ public:
         }
     }
 
-    int fetch_register(uint reg) {
+    sizediff_t fetch_register(size_t reg) {
         if(reg < R.length) {
             return R[reg];
         } else {
@@ -982,7 +874,7 @@ public:
         while(_running) {
             if(R[SP] < 0)
                 throw(new Exception(format("R[SP] is < 0 [%d]", R[SP])));
-            debug(instruction) 
+            debug(run) 
                 stderr.writeln("run: Getting instruction at R[PC]: ", R[PC]);
             if (R[PC] + R[OF] + (Instruction.sizeof / ByteCode.sizeof) >= memory.length) 
             {
@@ -1046,11 +938,11 @@ public:
         return 1;
     }
 
-    void register_TRP_handler(int i, void delegate(Instruction) new_handler) {
+    void register_TRP_handler(sizediff_t i, void delegate(Instruction) new_handler) {
         TRP_handlers[i] = new_handler;
     }
 
-    void register_SIG_handler(int i, void delegate() new_handler) {
+    void register_SIG_handler(sizediff_t i, void delegate() new_handler) {
         SIG_handlers[i] = new_handler;
     }
 
