@@ -1,0 +1,11 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = git@github.com:dcarp/cmake-d.git
+	branch = master
+	commit = 57f8fa739f7a70a5cd988354ff35c932194dd018
+	parent = c94ead695576b34ab221625e755b2954fabba108
+	cmdver = 0.3.1

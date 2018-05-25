@@ -5,7 +5,7 @@ import Utilities;
 
 import std.stdio;
 import std.string;
-import std.regexp;
+import std.regex;
 import std.conv;
 import std.exception;
 import std.array;
@@ -20,7 +20,7 @@ import std.algorithm;
 //debug = log6; // symbol size_of
 //debug = log7; // Tcode
 //debug = log8; // Tcode extra debug
-debug = log9; // Phases
+//debug = log9; // Phases
 //debug = SymbolTable; // SymbolTable debug
 //debug = Tokenizer;
 //debug = tokenizer;
@@ -129,7 +129,7 @@ public:
         token_type_regexps["math_symbol"] = 
             r"[+-/*\^%]";
         token_type_regexps["relational_symbol"] = 
-            r"[\<\>\!=][=]?";
+            r"[\<\>!=][=]?";
         token_type_regexps["boolean_operator"] = 
             r"&&|\|\|";
         token_type_regexps["assignment_operator"] = 
@@ -182,7 +182,7 @@ public:
     bool is_type(string type)
     {
         bool is_type;
-        if(RegExp m = std.regexp.search(type, token_type_regexps["type"]))
+        if(auto m = std.regex.matchFirst(type, token_type_regexps["type"]))
             is_type = true;
         return is_type;
     }
@@ -190,7 +190,7 @@ public:
     bool is_class(string type)
     {
         bool is_class;
-        if(RegExp m = std.regexp.search(type, token_type_regexps["class_name"]))
+        if(auto m = std.regex.matchFirst(type, token_type_regexps["class_name"]))
             is_class = true;
         return is_class;
     }
@@ -201,7 +201,7 @@ class Tokenizer
 private:
     Grammar grammar;
     uint _line_num;
-    string buffer;
+    char[] buffer;
     string filename;
     File infile;
     Token[] tokens;
@@ -224,7 +224,7 @@ public:
         _line_num = 0;
         infile.close();
         buffer.length = 0;
-        tokens.clear();
+        tokens.length = 0;
 
         infile.open(filename);
         read_token();
@@ -242,10 +242,10 @@ public:
             debug(Tokenizer)
                 stderr.writef("%-5d: %s\n", _line_num, buffer);
             // Strip whitespace from the beginning
-            if(RegExp m = std.regexp.search(buffer, r"^(:?" ~ grammar.token_type_regexps["ws"] ~ r")*"))
+            if(auto m = std.regex.matchFirst(buffer, r"^(:?" ~ grammar.token_type_regexps["ws"] ~ r")*"))
                 buffer = m.post();
             // Strip comments off the end
-            if(RegExp m = std.regexp.search(buffer, r"(:?" ~ grammar.token_type_regexps["comment"] ~ r")$"))
+            if(auto m = std.regex.matchFirst(buffer, r"(:?" ~ grammar.token_type_regexps["comment"] ~ r")$"))
                 buffer = m.pre();
             debug(tokenizer)
                 stderr.writef("  fill_buffer: Result from read and strip: [%s]\n", buffer);
@@ -273,11 +273,11 @@ public:
                 string search_value = grammar.token_type_regexps.get(type, "error");
                 if(search_value.length)
                 {
-                    if(RegExp m = std.regexp.search(buffer, r"^(" ~ search_value ~ r")" ~ grammar.token_type_regexps["ws"] ~ r"*")) 
+                    if(auto m = std.regex.matchFirst(buffer, r"^(" ~ search_value ~ r")" ~ grammar.token_type_regexps["ws"] ~ r"*")) 
                     {
                         buffer = m.post();
-                        debug(tokenizer) stderr.writef("Picked out the token [%s][%s]\n", type, m.match(1));
-                        tokens ~= new Token(m.match(1), type, _line_num);
+                        debug(tokenizer) stderr.writef("Picked out the token [%s][%s]\n", type, m[1]);
+                        tokens ~= new Token(to!(string)(m[1]), type, _line_num);
                         found = true;
                         break;
                     }
@@ -390,7 +390,7 @@ private:
     uint[string] counts;
     uint count = 100;
     uint tmp_count = 1;
-    size_t sizes[string];
+    size_t[string] sizes;
 public:
     this() 
     {
@@ -407,7 +407,7 @@ public:
         }
         debug(SymbolTable) stderr.writef("Adding symbol [%s]\n", s);
         // Keep a count of how many Symbols have been used, and set the new Symbol Symid appropriately
-        s.set_info(["Symid":format("%s%03d", s.info.get("Kind","x").toupper()[0], count++)]);
+        s.set_info(["Symid":format("%s%03d", s.info.get("Kind","x").toUpper()[0], count++)]);
         if(s.info.get("Value", "") == "")
             s.set_info(["Value":s.info["Symid"]]);
         symIDsymbols[s.info["Symid"]] = s;
@@ -534,7 +534,7 @@ public:
         if(interesting.data.get("Type", "--")[0] == '@')
         {
             debug(log6) stderr.writef("Array detected\n");
-            retval = sizes.get(interesting.data["Type"][1..$], -1);
+            retval = to!(int)(sizes.get(interesting.data["Type"][1..$], -1));
             if(retval == -1)
             {
                 debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.data["Type"]);
@@ -551,8 +551,8 @@ public:
         else if(interesting.info["Kind"] == "class")
         {
             debug(log6) stderr.writef("Class detected [%s]\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
-            retval = sizes.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], -1);
-            if(retval == -1)
+            retval = to!(int)(sizes.get(interesting.info["Scope"] ~ "." ~ interesting.info["Value"], int.max));
+            if(retval == int.max)
             {
                 debug(log6) stderr.writef("Need to calculate size of a %s\n", interesting.info["Scope"] ~ "." ~ interesting.info["Value"]);
                 retval = 0;
@@ -619,8 +619,8 @@ public:
         }
         else
         {
-            retval = sizes.get(interesting.data["Type"], -1);
-            if(retval == -1)
+            retval = to!(int)(sizes.get(interesting.data["Type"], int.max));
+            if(retval == int.max)
             {
                 retval = 0;
                 debug(log6) stderr.writef("**** Need to calculate size of a %s %s\n", interesting.info["Kind"], interesting.data["Type"]);
@@ -4559,7 +4559,7 @@ public:
 
         debug(log1) stderr.writef("Starting Pass 2\n");
         tokenizer.rewind();
-        _scope.clear();
+        _scope.length = 0;
 
         pass = 2;
         debug(log9) stderr.writef("Semantics/ICode\n");

@@ -11,7 +11,7 @@ run1="${os_string}run proj1.hex\n"
 exit1="${os_string}exit\n"
 
 [ ! -f nums0.asm  ] && bash write_nums.sh
-for file in simple.asm memory.asm proj1.asm proj2.asm proj3.asm proj4.asm nums0.asm nums1.asm nums2.asm nums3.asm nums4.asm nums5.asm nums6.asm nums7.asm nums8.asm nums9.asm; do
+for file in memory.asm  new_del.asm  nums0.asm  nums1.asm  nums2.asm  nums3.asm  nums4.asm  nums5.asm  nums6.asm  nums7.asm  nums8.asm  nums9.asm  proj1.asm  proj2.asm  proj3.asm  proj4.asm; do
     [ ! -f ${file/asm/hex}  ] && ./as $file ${file/asm/hex}
 done
 
@@ -481,18 +481,6 @@ cht ()
     result $function $?
 }
 
-simple()
-{
-    function="simple"
-    (
-        echo -ne "set echo 1\n";
-        echo -ne "load simple.hex\n";
-        echo -ne "runall\n";
-    ) | ./os && \
-    echo
-    result $function $?
-}
-
 mem_test()
 {
     function="mem_test"
@@ -658,6 +646,7 @@ virtualmemory ()
     echo $2
 }
 
+touch DISK
 [[ $1 == "all" ]] || [[ -z "$1" ]] && all
 [[ $1 == "compat" ]] && compat
 [[ $1 == "compat_runall" ]] && compat_runall
@@ -672,7 +661,6 @@ virtualmemory ()
 [[ $1 == "rm_test" ]] && rm_test
 [[ $1 == "ln_test" ]] && ln_test
 [[ $1 == "cht" ]] && cht
-[[ $1 == "simple" ]] && simple
 [[ $1 == "fillup" ]] && fillup
 [[ $1 == "file_size" ]] && file_size
 [[ $1 == "file_system_test" ]] && file_system_test

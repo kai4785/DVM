@@ -5,7 +5,7 @@ module VirtualMachine;
 import std.stdio;    // For STDIN, STDOUT, STDERR
 import std.file;
 import std.conv;
-import std.regexp;
+import std.regex;
 import std.string;
 import std.exception;
 
@@ -18,6 +18,7 @@ import Assembler;
 //debug = memory_access;
 //debug = vmemory_access;
 //debug = paging;
+//debug = dump;
 //version = VIRTUALMEMORY;
 enum PAGE_SIZE = 512;
 
@@ -276,7 +277,7 @@ private:
     Directive_Int read_int(size_t loc)
     {
         debug(memory_access)
-            stderr.writef("Reading an int at position [%d]\n", loc + R[OF]);
+            stderr.writef("Reading an int at position [%d+%d=%d]\n", loc, R[OF], loc + R[OF]);
         to_ByteCode!(Directive_Int) bytes;
         bytes.bytes[0..$] = memory[loc + R[OF]..loc + R[OF] + Directive_Int.sizeof];
         return bytes.data;
@@ -292,7 +293,7 @@ private:
 
     void do_JMP(Instruction I) {
         debug(instruction) {
-            string* symbol = (I.op1 in symbol_table);
+            string* symbol = (to!(uint)(I.op1) in symbol_table);
             if (symbol == null)
                 stderr.writef("instruction: [%d] (%d) JMP %d\n", active_threads[0].id, R[PC], I.op1);
             else
@@ -304,7 +305,7 @@ private:
 
     void do_JMR(Instruction I) {
         debug(instruction) {
-            string* symbol = (R[I.op1] in symbol_table);
+            string* symbol = (to!(uint)(R[I.op1]) in symbol_table);
             if (symbol == null)
                 stderr.writef("instruction: [%d] (%d) JMR %s(%d)\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], R[I.op1]);
             else
@@ -344,7 +345,7 @@ private:
     }
     void do_LDA(Instruction I) { 
         debug(instruction) {
-            string* symbol = (I.op2 in symbol_table);
+            string* symbol = (to!(uint)(I.op2) in symbol_table);
             if (symbol == null)
                 stderr.writefln("instruction: [%d] (%d) LDA %s = %d", active_threads[0].id, R[PC], valid_registers.to_string[I.op1], I.op2);
             else
@@ -358,7 +359,7 @@ private:
         if (I.mode == 0) {
             write_int(I.op2, R[I.op1]);
             debug(instruction) {
-                string* symbol = (I.op2 in symbol_table);
+                string* symbol = (to!(uint)(I.op2) in symbol_table);
                 if (symbol == null)
                     stderr.writef("%d\n", I.op2);
                 else
@@ -367,7 +368,7 @@ private:
         } else if (I.mode == 1) {
             write_int(R[I.op2], R[I.op1]);
             debug(instruction) {
-                string* symbol = (R[I.op2] in symbol_table);
+                string* symbol = (to!(uint)(R[I.op2]) in symbol_table);
                 if (symbol == null)
                     stderr.writef("%s(%d)\n", valid_registers.to_string[I.op2], R[I.op2]);
                 else
@@ -376,24 +377,24 @@ private:
         }
     }
     void do_LDR(Instruction I) {
-        debug(instruction) stderr.writef("instruction: [%d] (%d) LDR %s <= ", active_threads[0].id, R[PC], valid_registers.to_string[I.op1]);
+        debug(instruction) stderr.writef("instruction: [%d] (%d) LDR %s <=\n", active_threads[0].id, R[PC], valid_registers.to_string[I.op1]);
         if(I.mode == 0) {
             R[I.op1] = read_int(I.op2);
             debug(instruction) {
-                string* symbol = (I.op2 in symbol_table);
+                string* symbol = (to!(uint)(I.op2) in symbol_table);
                 if (symbol == null)
-                    stderr.writef("(%d)(%d)\n", I.op2, read_int(I.op2));
+                    stderr.writef("        (%d)(%d)\n", I.op2, read_int(I.op2));
                 else
-                    stderr.writef("(%d:%s)(%d)\n", I.op2, *symbol, read_int(I.op2));
+                    stderr.writef("        (%d:%s)(%d)\n", I.op2, *symbol, read_int(I.op2));
             }
         } else if (I.mode == 1) {
             R[I.op1] = read_int(R[I.op2]);
             debug(instruction) {
-                string* symbol = (R[I.op2] in symbol_table);
+                string* symbol = (to!(uint)(R[I.op2]) in symbol_table);
                 if (symbol == null)
-                    stderr.writef("%s(%d)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], read_int(R[I.op2]));
+                    stderr.writef("        %s(%d)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], read_int(R[I.op2]));
                 else
-                    stderr.writef("%s(%d:%s)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], *symbol, read_int(R[I.op2]));
+                    stderr.writef("        %s(%d:%s)(%d)\n", valid_registers.to_string[I.op2], R[I.op2], *symbol, read_int(R[I.op2]));
             }
         } else {
             throw(new Exception("Unknown adressing mode(" ~ to!(string)(I.mode) ~ ") in LDR statement\n"));
@@ -675,7 +676,7 @@ private:
         return retval;
     }
 
-    void mem_dump(uint start, uint end) {
+    void mem_dump(long start, long end) {
         stderr.writefln("dump: Memory dump");
         stderr.writef("%4d : ", start);
         for(size_t i = 0; i < end - start; i++) {
@@ -954,4 +955,3 @@ public:
         stderr.writef("]\n");
     }
 }
-

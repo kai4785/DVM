@@ -7,6 +7,10 @@ import Compiler;
 
 int main(string[] args) {
     int retval = 0;
+    if(args.length < 2) {
+        stderr.writef("Need an input file.\n");
+        return 1;
+    }
     try {
         Tokenizer tokenizer = new Tokenizer(args[1]);
         Compiler compiler = new Compiler(tokenizer);

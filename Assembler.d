@@ -5,10 +5,11 @@ module Assembler;
 import std.stdio;    // For STDIN, STDOUT, STDERR
 import std.conv;
 import std.string;
+import std.regex;
 
 import Utilities;
 
-debug = log9; // Phases
+//debug = log9; // Phases
 //debug = pass1;
 //debug = pass2;
 
@@ -38,14 +39,14 @@ private:
     //code_size = header.data.sizeof;
     code_size = 0;
     data_size = 0;
-    string line;
+    char[] line;
     string[string] tokens;
     uint data_symbols[string];
     File infile = File(filename, "r");
     while(infile.readln(line)) {
       line = chomp(line);
       line_num++;
-      tokens = parseln(line);
+      tokens = parseln(to!(string)(line));
       if(("type" in tokens) != null) {
         if ((tokens["label"] in symbol_table) != null) {
           throw (new Exception(to!(string)(line_num) ~ ": Duplicate Label detected " ~ tokens["label"] ));
@@ -99,7 +100,7 @@ private:
         bytes.data = header.data[i];
         program[i * bytes.bytes.length..(i + 1) * bytes.bytes.length] = bytes.bytes[0..$];
     }
-    string line;
+    char[] line;
     string[string] tokens;
     line_num = 0;
     Instruction inst;
@@ -108,7 +109,7 @@ private:
     while(infile.readln(line)) {
       line = chomp(line);
       line_num++;
-      tokens = parseln(line);
+      tokens = parseln(to!(string)(line));
       if(("type" in tokens) != null) {
         if(tokens["type"] == "opcode") {
           inst = to_Instruction(tokens);
@@ -122,10 +123,10 @@ private:
             debug(pass2) stderr.writef("pass2: Processing .BYT directive for value %s\n", tokens["value"]);
             to_ByteCode!(Directive_Byte) bytecode;
             bytes.length = bytecode.bytes.length;
-            if (auto m = std.regexp.search(tokens["value"], r"^\d+$")) {
+            if (auto m = std.regex.matchFirst(tokens["value"], r"^\d+$")) {
               debug(pass2) stderr.writef("pass2: .BYT directive is Numeric\n");
               bytecode.data = to!(ubyte)(parse!(Instruction.storage_type)(tokens["value"]));
-            } else if (auto m = std.regexp.search(tokens["value"], r"'?(.)'?$")) {
+            } else if (auto m = std.regex.matchFirst(tokens["value"], r"'?(.)'?$")) {
               debug(pass2) stderr.writef("pass2: .BYT directive is not Numeric\n");
               if(tokens["value"][1] == '\\')
               {
@@ -144,12 +145,12 @@ private:
             debug(pass2) stderr.writef("pass2: Processing .INT directive for value %s\n", tokens["value"]);
             to_ByteCode!(Directive_Int) bytecode;
             bytes.length = bytecode.bytes.length;
-            if(auto m = std.regexp.search(tokens["value"], r"^[+-]?\d+$")) {
+            if(auto m = std.regex.matchFirst(tokens["value"], r"^[+-]?\d+$")) {
               debug(pass2) stderr.writef("pass2: .INT directive is Numeric\n");
               bytecode.data = parse!(Instruction.storage_type)(tokens["value"]);
             } else {
               debug(pass2) stderr.writef("pass2: .INT value is invalid\n");
-              throw (new Exception(to!(string)(line_num) ~ ": .INT value is invalid\n" ~ line));
+              throw (new Exception(format("%d: .INT value is invalid\n%s", line_num, line)));
             }
             bytes[0..$] = bytecode.bytes[0..$];
           } else {
@@ -226,75 +227,75 @@ private:
 
     // Example: writef("%s[%s]%s", m.pre, m.match(0), m.post); 
     // Directive Syntax no label
-    if (auto m = std.regexp.search(line, r"^\s*(\.\w+)\s+('?[+-]?\d+'?|'?..?'?)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: DN: %s[%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), ""); 
-      debug(parseln) writef("parseln: Label: '%s', Directive: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", "", m.match(1), m.match(2), m.match(3), m.match(4));
+    if (auto m = std.regex.matchFirst(line, r"^\s*(\.\w+)\s+('?[+-]?\d+'?|'?..?'?)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]      = "directive";
       tokens_assoc["label"]     = "";
-      tokens_assoc["directive"] = m.match(1);
-      tokens_assoc["value"]     = m.match(2);
-      tokens_assoc["extra"]     = m.match(3);
-      tokens_assoc["comment"]   = m.match(4);
+      tokens_assoc["directive"] = m[1];
+      tokens_assoc["value"]     = m[2];
+      tokens_assoc["extra"]     = m[3];
+      tokens_assoc["comment"]   = m[4];
+      debug(parseln) writef("parseln d1: %3d: DN: %s[%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["directive"], tokens_assoc["value"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln d1: Label: '%s', Directive: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", "", tokens_assoc["directive"], tokens_assoc["value"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // Directive Syntax with label
-    else if (auto m = std.regexp.search(line, r"^\s*(\w+)\s+(\.\w+)\s+('?[+-]?\d+'?|'?..?'?)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: DL: %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), m.match(5), ""); 
-      debug(parseln) writef("parseln: Label: '%s', Directive: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", m.match(1), m.match(2), m.match(3), m.match(4), m.match(5));
+    else if (auto m = std.regex.matchFirst(line, r"^\s*(\w+)\s+(\.\w+)\s+('?[+-]?\d+'?|'?..?'?)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]      = "directive";
-      tokens_assoc["label"]     = m.match(1);
-      tokens_assoc["directive"] = m.match(2);
-      tokens_assoc["value"]     = m.match(3);
-      tokens_assoc["extra"]     = m.match(4);
-      tokens_assoc["comment"]   = m.match(5);
+      tokens_assoc["label"]     = m[1];
+      tokens_assoc["directive"] = m[2];
+      tokens_assoc["value"]     = m[3];
+      tokens_assoc["extra"]     = m[4];
+      tokens_assoc["comment"]   = m[5];
+      debug(parseln) writef("parseln d2: %3d: DL: %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["label"], tokens_assoc["directive"], tokens_assoc["value"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln d2: Label: '%s', Directive: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", tokens_assoc["label"], tokens_assoc["directive"], tokens_assoc["value"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // OpCode with out Label and 2 operands
-    else if (auto m = std.regexp.search(line, r"^\s*(\w+)\s+(\w+)\s*,\s*(\w+|[+-]?\d+)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: ON2 %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), m.match(5), ""); 
-      debug(parseln) writef("parseln: Label: '%s', OpCode: '%s', OP1: '%s', OP2: '%s', Extra: '%s', Comments: '%s'\n", "", m.match(1), m.match(2), m.match(3), m.match(4), m.match(5));
+    else if (auto m = std.regex.matchFirst(line, r"^\s*(\w+)\s+(\w+)\s*,\s*(\w+|[+-]?\d+)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]    = "opcode";
       tokens_assoc["label"]   = "";
-      tokens_assoc["opcode"]  = m.match(1);
-      tokens_assoc["op1"]     = m.match(2);
-      tokens_assoc["op2"]     = m.match(3);
-      tokens_assoc["extra"]   = m.match(4);
-      tokens_assoc["comment"] = m.match(5);
+      tokens_assoc["opcode"]  = m[1];
+      tokens_assoc["op1"]     = m[2];
+      tokens_assoc["op2"]     = m[3];
+      tokens_assoc["extra"]   = m[4];
+      tokens_assoc["comment"] = m[5];
+      debug(parseln) writef("parseln o1: %3d: ON2 %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["op2"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln o1: Label: '%s', OpCode: '%s', OP1: '%s', OP2: '%s', Extra: '%s', Comments: '%s'\n", "", tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["op2"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // OpCode with Label and 2 operands
-    else if (auto m = std.regexp.search(line, r"^\s*(\w+)\s+(\w+)\s+(\w+)\s*,\s*(\w+|[+-]?\d+)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: OL2 %s[%s][%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), m.match(5), m.match(6), ""); 
-      debug(parseln) writef("parseln: Label: '%s', OpCode: '%s', OP1: '%s', OP2: '%s', Extra: '%s', Comments: '%s'\n", m.match(1), m.match(2), m.match(3), m.match(4), m.match(5), m.match(6));
+    else if (auto m = std.regex.matchFirst(line, r"^\s*(\w+)\s+(\w+)\s+(\w+)\s*,\s*(\w+|[+-]?\d+)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]    = "opcode";
-      tokens_assoc["label"]   = m.match(1);
-      tokens_assoc["opcode"]  = m.match(2);
-      tokens_assoc["op1"]     = m.match(3);
-      tokens_assoc["op2"]     = m.match(4);
-      tokens_assoc["extra"]   = m.match(5);
-      tokens_assoc["comment"] = m.match(6);
+      tokens_assoc["label"]   = m[1];
+      tokens_assoc["opcode"]  = m[2];
+      tokens_assoc["op1"]     = m[3];
+      tokens_assoc["op2"]     = m[4];
+      tokens_assoc["extra"]   = m[5];
+      tokens_assoc["comment"] = m[6];
+      debug(parseln) writef("parseln o2: %3d: OL2 %s[%s][%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["label"], tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["op2"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln o2: Label: '%s', OpCode: '%s', OP1: '%s', OP2: '%s', Extra: '%s', Comments: '%s'\n", tokens_assoc["label"], tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["op2"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // OpCode with Label and 1 operand
-    else if (auto m = std.regexp.search(line, r"^\s*(\w+)\s+(\w+)\s+(\w+)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: OL1 %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), m.match(5), ""); 
-      debug(parseln) writef("parseln: Label: '%s', OpCode: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", m.match(1), m.match(2), m.match(3), m.match(4), m.match(5));
+    else if (auto m = std.regex.matchFirst(line, r"^\s*(\w+)\s+(\w+)\s+(\w+)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]    = "opcode";
-      tokens_assoc["label"]   = m.match(1);
-      tokens_assoc["opcode"]  = m.match(2);
-      tokens_assoc["op1"]     = m.match(3);
-      tokens_assoc["extra"]   = m.match(4);
-      tokens_assoc["comment"] = m.match(5);
+      tokens_assoc["label"]   = m[1];
+      tokens_assoc["opcode"]  = m[2];
+      tokens_assoc["op1"]     = m[3];
+      tokens_assoc["extra"]   = m[4];
+      tokens_assoc["comment"] = m[5];
+      debug(parseln) writef("parseln o3: %3d: OL1 %s[%s][%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["label"], tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln o3: Label: '%s', OpCode: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", tokens_assoc["label"], tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // OpCode with out Label and 1 operand
-    else if (auto m = std.regexp.search(line, r"^\s*(\w+)\s+(\w+)\s*([^;]*)($|;.*$)")) {
-      debug(parseln) writef("parseln: %3d: ON1 %s[%s][%s][%s][%s]%s -> ",line_num, m.pre, m.match(1), m.match(2), m.match(3), m.match(4), ""); 
-      debug(parseln) writef("parseln: Label: '%s', OpCode: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", "", m.match(1), m.match(2), m.match(3), m.match(4));
+    else if (auto m = std.regex.matchFirst(line, r"^\s*(\w+)\s+(\w+)\s*([^;]*)($|;.*$)")) {
       tokens_assoc["type"]    = "opcode";
       tokens_assoc["label"]   = "";
-      tokens_assoc["opcode"]  = m.match(1);
-      tokens_assoc["op1"]     = m.match(2);
-      tokens_assoc["extra"]   = m.match(3);
-      tokens_assoc["comment"] = m.match(4);
+      tokens_assoc["opcode"]  = m[1];
+      tokens_assoc["op1"]     = m[2];
+      tokens_assoc["extra"]   = m[3];
+      tokens_assoc["comment"] = m[4];
+      debug(parseln) writef("parseln o4: %3d: ON1 %s[%s][%s][%s][%s]%s -> ",line_num, m.pre, tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["extra"], tokens_assoc["comment"], ""); 
+      debug(parseln) writef("parseln o4: Label: '%s', OpCode: '%s', OP1: '%s', Extra: '%s', Comments: '%s'\n", "", tokens_assoc["opcode"], tokens_assoc["op1"], tokens_assoc["extra"], tokens_assoc["comment"]);
     }
     // Let's just throw for funsies here
-    else if (auto m = std.regexp.search(line, r"^\s*")) {
+    else if (auto m = std.regex.matchFirst(line, r"^\s*")) {
       debug(parseln) writef("parseln: [%3d]: empty line\n", line_num);
     }
     else {
@@ -303,7 +304,7 @@ private:
 
     // Opcode must be valid
     if (("opcode" in tokens_assoc) != null && (tokens_assoc["opcode"] in valid_opcodes.to_OpCode) == null)
-      throw (new Exception(to!(string)(line_num) ~ ": Syntax error. OpCode(" ~ tokens_assoc["opcode"] ~ ") is no a valid opcode\n"));
+      throw (new Exception(to!(string)(line_num) ~ ": Syntax error. OpCode(" ~ tokens_assoc["opcode"] ~ ") is not a valid opcode\n"));
 
     // OP1 can be a register, but it can't be a read only register, like PC
     if (("op1" in tokens_assoc) != null && (tokens_assoc["op1"] in valid_registers.to_Register) != null && (tokens_assoc["op1"] in valid_registers.read_only) != null) {
