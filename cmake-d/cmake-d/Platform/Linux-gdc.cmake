@@ -31,7 +31,7 @@ endif()
 set(CMAKE_STATIC_LIBRARY_CREATE_D_FLAGS "")
 
 set(CMAKE_D_COMPILE_OPTIONS_PIC "-fPIC")
-#set(CMAKE_SHARED_LIBRARY_D_FLAGS "")            # -pic
+set(CMAKE_SHARED_LIBRARY_D_FLAGS "-fPIC")            # -pic
 set(CMAKE_SHARED_LIBRARY_CREATE_D_FLAGS "-shared")       # -shared
 #set(CMAKE_SHARED_LIBRARY_LINK_D_FLAGS "")         # +s, flag for exe link to use shared lib
 set(CMAKE_SHARED_LIBRARY_RUNTIME_D_FLAG "-Wl,-rpath,")       # -rpath
