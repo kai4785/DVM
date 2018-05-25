@@ -148,53 +148,64 @@ foreach(sh_FILE ${sh_FILES})
     )
 endforeach()
 
-# set(kxi_FILES
-#     DemoA.kxi
-#     DemoC.kxi
-#     DemoCMinus.kxi
-#     control_structures.kxi
-#     simple.kxi
-#     test.kxi
-#     test1.kxi
-#     #test2.kxi
-#     test3.kxi
-#     test4.kxi
-# )
-# 
-# foreach(kxi_FILE ${kxi_FILES})
-#     get_filename_component(test ${kxi_FILE} NAME_WE)
-#     set(asm_FILE ${test}.asm)
-#     set(hex_FILE ${test}.hex)
-#     set(test ${test}_kxi)
-#     set(disk ${CMAKE_BINARY_DIR}/${test}.DISK)
-#     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${asm_FILE}
-#         COMMAND $<TARGET_FILE:cm> ${CMAKE_CURRENT_SOURCE_DIR}/${kxi_FILE} ${CMAKE_BINARY_DIR}/${asm_FILE}
-#     )
-#     add_custom_target(${test}_kxi
-#         ALL
-#         DEPENDS ${CMAKE_BINARY_DIR}/${asm_FILE}
-#     )
-#     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${hex_FILE}
-#         COMMAND $<TARGET_FILE:as> ${CMAKE_BINARY_DIR}/${asm_FILE} ${CMAKE_BINARY_DIR}/${hex_FILE}
-#     )
-#     add_custom_target(${test}_asm
-#         ALL
-#         DEPENDS ${CMAKE_BINARY_DIR}/${hex_FILE}
-#     )
-# 
-#     add_test(NAME ${test}_setup
-#         COMMAND $<TARGET_FILE:fs> --disk ${disk} --mkfs --size 1048576 --copy ${hex_FILE},/
-#     )
-#     add_test(NAME ${test}
-#         COMMAND $<TARGET_FILE:os> --disk ${disk} --script /dev/null
-#     )
-#     add_test(NAME ${test}_cleanup
-#         COMMAND ${CMAKE_COMMAND} -E remove -f ${disk}
-#     )
-# 
-#     set_tests_properties(${test}_setup   PROPERTIES FIXTURES_SETUP   ${test}_setup)
-#     set_tests_properties(${test}_cleanup PROPERTIES FIXTURES_CLEANUP ${test}_cleanup)
-# 
-#     set_tests_properties(${test}         PROPERTIES DEPENDS ${test}_setup)
-#     set_tests_properties(${test}_cleanup PROPERTIES DEPENDS ${test})
-# endforeach()
+set(kxi_FILES
+    DemoA.kxi
+    DemoC.kxi
+    DemoCMinus.kxi
+    cntl_struct.kxi
+    simple.kxi
+    test.kxi
+    #  test1.kxi fails to compile:
+    #    [27][g.main] Error: Type mismatch in function signature: Got type "char" in the call when function declaration is expecting a "int".
+    #    [28][g.main] Error: Type mismatch in function signature: Got type "char" in the call when function declaration is expecting a "int".
+    #    Exception thrown! : Errors encountered: [2]
+    #test1.kxi
+    test2.kxi
+    #  test3.kxi fails to compile:
+    #    [81][g.main] Error: Argument list lengths don't match: Expected 0, got 2.
+    #    Exception thrown! : Continuing from this point is pointless
+    #test3.kxi
+    test4.kxi
+)
+
+foreach(kxi_FILE ${kxi_FILES})
+    get_filename_component(file_we ${kxi_FILE} NAME_WE)
+    set(test ${file_we}_kxi)
+    set(disk ${CMAKE_BINARY_DIR}/${test}.DISK)
+
+    set(asm_FILE ${file_we}.asm)
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${asm_FILE}
+        COMMAND $<TARGET_FILE:cm> ${CMAKE_CURRENT_SOURCE_DIR}/${kxi_FILE} ${CMAKE_BINARY_DIR}/${asm_FILE}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${kxi_FILE}
+    )
+    add_custom_target(${test}_asm
+        ALL
+        DEPENDS ${CMAKE_BINARY_DIR}/${asm_FILE}
+    )
+
+    set(hex_FILE ${file_we}.hex)
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${hex_FILE}
+        COMMAND $<TARGET_FILE:as> ${CMAKE_BINARY_DIR}/${asm_FILE} ${CMAKE_BINARY_DIR}/${hex_FILE}
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${asm_FILE}
+    )
+    add_custom_target(${test}_hex
+        ALL
+        DEPENDS ${CMAKE_BINARY_DIR}/${hex_FILE}
+    )
+
+    add_test(NAME ${test}_setup
+        COMMAND $<TARGET_FILE:fs> --disk ${disk} --mkfs --size 1048576 --copy ${hex_FILE},/
+    )
+    add_test(NAME ${test}
+        COMMAND $<TARGET_FILE:os> --disk ${disk} --script /dev/null
+    )
+    add_test(NAME ${test}_cleanup
+        COMMAND ${CMAKE_COMMAND} -E remove -f ${disk}
+    )
+
+    set_tests_properties(${test}_setup   PROPERTIES FIXTURES_SETUP   ${test}_setup)
+    set_tests_properties(${test}_cleanup PROPERTIES FIXTURES_CLEANUP ${test}_cleanup)
+
+    set_tests_properties(${test}         PROPERTIES DEPENDS ${test}_setup)
+    set_tests_properties(${test}_cleanup PROPERTIES DEPENDS ${test})
+endforeach()
