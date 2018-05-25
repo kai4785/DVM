@@ -34,10 +34,10 @@ set(CMAKE_D_COMPILE_OPTIONS_PIC "-fPIC")
 #set(CMAKE_SHARED_LIBRARY_D_FLAGS "")            # -pic
 set(CMAKE_SHARED_LIBRARY_CREATE_D_FLAGS "-shared")       # -shared
 #set(CMAKE_SHARED_LIBRARY_LINK_D_FLAGS "")         # +s, flag for exe link to use shared lib
-set(CMAKE_SHARED_LIBRARY_RUNTIME_D_FLAG "-Wl,-rpath ")       # -rpath
+set(CMAKE_SHARED_LIBRARY_RUNTIME_D_FLAG "-Wl,-rpath,")       # -rpath
 set(CMAKE_SHARED_LIBRARY_RUNTIME_D_FLAG_SEP ":")   # : or empty
-#set(CMAKE_SHARED_LIBRARY_SONAME_D_FLAG "")
-#set(CMAKE_SHARED_LIBRARY_RPATH_LINK_D_FLAG "")
+set(CMAKE_SHARED_LIBRARY_SONAME_D_FLAG "-Wl,-soname,")
+set(CMAKE_SHARED_LIBRARY_RPATH_LINK_D_FLAG "-Wl,-rpath,")
 
 # SET(CMAKE_D_FLAGS_INIT "-fversion=Posix -fversion=${CMAKE_BUILD_TYPE}Build ${DSTDLIB_FLAGS}")
 set(CMAKE_D_FLAGS_INIT "")
