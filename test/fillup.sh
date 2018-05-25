@@ -1,5 +1,6 @@
 #!/bin/bash
 set -ex
+fs=$1
 
 mkdir -p fillup
 for num in `seq 1 20`; do
@@ -7,10 +8,10 @@ for num in `seq 1 20`; do
 done
 wait
 rm -f fillup.DISK
-./fs --disk fillup.DISK --mkfs --size 1048576
-./fs --disk fillup.DISK --mkdir /fillup
+${fs} --disk fillup.DISK --mkfs --size 1048576
+${fs} --disk fillup.DISK --mkdir /fillup
 for file in fillup/*.zero; do
-    ./fs --disk fillup.DISK --copy $file,/afile
+    ${fs} --disk fillup.DISK --copy $file,/afile
 done
 rm -fr fillup
 rm -f fillup.DISK
