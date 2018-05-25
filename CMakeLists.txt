@@ -6,32 +6,26 @@ project(dvm D)
 
 set(CMAKE_INCLUDE_CURRENT_DIR On)
 
-add_executable(cm
-    cm.d
+add_library(dvm SHARED
+    Assembler.d
     Compiler.d
-    Utilities.d
-)
-
-add_executable(as
-    as.d
-    Assembler.d
-    Utilities.d
-)
-
-add_executable(os
-    os.d
+    FileSystem.d
     OperatingSystem.d
-    FileSystem.d
-    VirtualMachine.d
-    Assembler.d
     Utilities.d
+    VirtualMachine.d
 )
 
-add_executable(fs
-    fs.d
-    FileSystem.d
-    Utilities.d
-)
+add_executable(cm cm.d)
+target_link_libraries(cm dvm)
+
+add_executable(as as.d)
+target_link_libraries(as dvm)
+
+add_executable(os os.d)
+target_link_libraries(os dvm)
+
+add_executable(fs fs.d)
+target_link_libraries(fs dvm)
 
 enable_testing()
 
@@ -59,7 +53,9 @@ foreach(asm_FILE ${asm_FILES})
     set(hex_FILE ${asm_TARGET}.hex)
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${hex_FILE}
         COMMAND $<TARGET_FILE:as> ${CMAKE_CURRENT_SOURCE_DIR}/${asm_FILE} ${CMAKE_BINARY_DIR}/${hex_FILE}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${asm_FILE}
     )
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${hex_FILE})
     add_custom_target(${asm_TARGET}_asm
         ALL
         DEPENDS ${CMAKE_BINARY_DIR}/${hex_FILE}
@@ -76,8 +72,10 @@ set(test_FILES
 foreach(test_FILE ${test_FILES})
     get_filename_component(test_TARGET ${test_FILE} NAME_WE)
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/${test_FILE}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/${test_FILE} ${CMAKE_BINARY_DIR}/${test_FILE}
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${test_FILE} ${CMAKE_BINARY_DIR}/${test_FILE}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${test_FILE}
     )
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${test_FILE})
     add_custom_target(${test_TARGET}_test
         ALL
         DEPENDS ${CMAKE_BINARY_DIR}/${test_FILE}
@@ -178,6 +176,7 @@ foreach(kxi_FILE ${kxi_FILES})
         COMMAND $<TARGET_FILE:cm> ${CMAKE_CURRENT_SOURCE_DIR}/${kxi_FILE} ${CMAKE_BINARY_DIR}/${asm_FILE}
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${kxi_FILE}
     )
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${asm_FILE})
     add_custom_target(${test}_asm
         ALL
         DEPENDS ${CMAKE_BINARY_DIR}/${asm_FILE}
@@ -188,6 +187,7 @@ foreach(kxi_FILE ${kxi_FILES})
         COMMAND $<TARGET_FILE:as> ${CMAKE_BINARY_DIR}/${asm_FILE} ${CMAKE_BINARY_DIR}/${hex_FILE}
         DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${asm_FILE}
     )
+    set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_BINARY_DIR}/${hex_FILE})
     add_custom_target(${test}_hex
         ALL
         DEPENDS ${CMAKE_BINARY_DIR}/${hex_FILE}
