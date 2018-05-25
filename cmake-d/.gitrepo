@@ -7,5 +7,5 @@
 	remote = git@github.com:dcarp/cmake-d.git
 	branch = master
 	commit = 57f8fa739f7a70a5cd988354ff35c932194dd018
-	parent = c94ead695576b34ab221625e755b2954fabba108
+	parent = 082fb623aef5d3a516a7ebf58bac8e2d8a3f8dca
 	cmdver = 0.3.1
