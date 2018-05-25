@@ -197,7 +197,7 @@ foreach(kxi_FILE ${kxi_FILES})
         COMMAND $<TARGET_FILE:fs> --disk ${disk} --mkfs --size 1048576 --copy ${hex_FILE},/
     )
     add_test(NAME ${test}
-        COMMAND $<TARGET_FILE:os> --disk ${disk} --script /dev/null
+        COMMAND $<TARGET_FILE:os> --disk ${disk} --script ${CMAKE_SOURCE_DIR}/${file_we}.os
     )
     add_test(NAME ${test}_cleanup
         COMMAND ${CMAKE_COMMAND} -E remove -f ${disk}
